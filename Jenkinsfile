@@ -6,7 +6,7 @@ pipeline {
     }
 
     parameters {
-        choice(name: 'SERVICE_NAME', choices: ['frontend', 'gateway', 'auth'], description: 'Chọn service cần build')
+        choice(name: 'SERVICE_NAME', choices: ['frontend/client', 'gateway', 'backend-auth'], description: 'Chọn service cần build')
         string(name: 'DOCKERHUB_REPO', defaultValue: 'catarena', description: 'Tên repository trên DockerHub')
     }
 
