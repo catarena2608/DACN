@@ -1,6 +1,6 @@
 FROM node:18-alpine
 
-WORKDIR /app/auth
+WORKDIR /app/gateway
 
 COPY package*.json .
 
@@ -8,6 +8,6 @@ RUN npm install
 
 COPY . .
 
-EXPOSE 3001
+EXPOSE 3000
 
 CMD ["npm", "start"]
