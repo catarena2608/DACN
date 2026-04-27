@@ -49,11 +49,11 @@ pipeline {
             }
         }
 
-        stage('Scan Source Code (SonarQube)') {
-            steps {
+        // stage('Scan Source Code (SonarQube)') {
+        //     steps {
                 
-            }
-        }
+        //     }
+        // }
 
         stage('Build & Push with Kaniko') {
             steps {
@@ -78,12 +78,12 @@ pipeline {
                 }
             }
         }
-        stage('Scan Image') {
-            steps {
+    //     stage('Scan Image') {
+    //         steps {
 
-            }
-        }
-    }
+    //         }
+    //     }
+    // }
 
     post {
         success {
