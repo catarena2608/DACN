@@ -60,7 +60,7 @@ pipeline {
                 container('kaniko') {
                     script {
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                            def fullImageName = "${params.DOCKERHUB_REPO}/${params.SERVICE_NAME}:${IMAGE_TAG}"
+                            def fullImageName = "${params.DOCKERHUB_REPO}/dacn-${params.SERVICE_NAME}:${IMAGE_TAG}"
                             
                             sh """
                                 echo "{\\\"auths\\\":{\\\"https://index.docker.io/v1/\\\":{\\\"auth\\\":\\\"\$(echo -n ${DOCKER_USER}:${DOCKER_PASS} | base64)\\\"}}}" > /kaniko/.docker/config.json
