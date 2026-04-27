@@ -59,7 +59,7 @@ pipeline {
             steps {
                 container('kaniko') {
                     // Thay 'dockerhub-auth' bằng ID chính xác của credential bạn tạo trong Jenkins
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-auth', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         script {
                             def fullImageName = "${DOCKERHUB_REPO}/${params.SERVICE_NAME}:${env.BUILD_NUMBER}"
                             echo "--- Hệ thống đang đóng gói image: ${fullImageName} ---"
