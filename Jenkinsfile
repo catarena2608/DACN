@@ -58,21 +58,35 @@ pipeline {
         stage('Build & Push with Kaniko') {
             steps {
                 container('kaniko') {
-                    script {
-                        withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                            def fullImageName = "${params.DOCKERHUB_REPO}/dacn-${params.SERVICE_NAME}:${IMAGE_TAG}"
+                    // Thay 'dockerhub-auth' bằng ID chính xác của credential bạn tạo trong Jenkins
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-auth', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        script {
+                            def fullImageName = "${DOCKERHUB_REPO}/${params.SERVICE_NAME}:${env.BUILD_NUMBER}"
+                            echo "--- Hệ thống đang đóng gói image: ${fullImageName} ---"
                             
-                            sh """
-                                echo "{\\\"auths\\\":{\\\"https://index.docker.io/v1/\\\":{\\\"auth\\\":\\\"\$(echo -n ${DOCKER_USER}:${DOCKER_PASS} | base64)\\\"}}}" > /kaniko/.docker/config.json
-                            """
-
-                            echo "--- Kaniko đang build & push: ${fullImageName} ---"
-
-                            sh """
-                            /kaniko/executor --context ${env.WORKSPACE}/${params.SERVICE_NAME} \
-                                --dockerfile ${env.WORKSPACE}/${params.SERVICE_NAME}/Dockerfile \
-                                --destination ${fullImageName}
-                            """ 
+                            sh '''
+                            # 1. Đảm bảo thư mục cấu hình tồn tại
+                            mkdir -p /kaniko/.docker
+                            
+                            # 2. Tạo chuỗi xác thực base64 sạch (không có ký tự xuống dòng)
+                            AUTH=$(echo -n "${DOCKER_USER}:${DOCKER_PASS}" | base64 | tr -d '\n')
+                            
+                            # 3. Ghi file config.json đúng định dạng mà Kaniko yêu cầu
+                            cat <<EOF > /kaniko/.docker/config.json
+                                {
+                                "auths": {
+                                    "https://index.docker.io/v1/": {
+                                    "auth": "${AUTH}"
+                                    }
+                                }
+                                }
+                                EOF
+                            # 4. Thực thi Kaniko với context chính xác
+                            /kaniko/executor \
+                                --context ${WORKSPACE}/${params.SERVICE_NAME}/client \
+                                --dockerfile ${WORKSPACE}/${params.SERVICE_NAME}/client/Dockerfile \
+                                --destination ${DOCKERHUB_REPO}/${params.SERVICE_NAME}:${BUILD_NUMBER}
+                            '''
                         }
                     }
                 }
