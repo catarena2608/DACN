@@ -42,6 +42,13 @@ pipeline {
 
         stage('Security Scan Source (Trivy)') {
             steps {
+                script {
+                    def servicePath = "${WORKSPACE}/${params.SERVICE_NAME}"
+                    echo "--- Kiểm tra tồn tại thư mục ${servicePath} ---"
+                    if (!fileExists(servicePath)) {
+                        error "Thư mục ${servicePath} không tồn tại. Vui lòng kiểm tra lại tên service."
+                    }
+                }
                 container('trivy') {
                     echo "--- Quét lỗ hổng hệ thống và thư viện ---"
                     sh "trivy fs --severity HIGH,CRITICAL ${params.SERVICE_NAME}"
@@ -61,27 +68,13 @@ pipeline {
                     // Thay 'dockerhub-auth' bằng ID chính xác của credential bạn tạo trong Jenkins
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         script {
-                            def fullImageName = "${DOCKERHUB_REPO}/${params.SERVICE_NAME}:${env.BUILD_NUMBER}"
-                            echo "--- Hệ thống đang đóng gói image: ${fullImageName} ---"
-                            
-                            sh '''
-                            # 1. Đảm bảo thư mục cấu hình tồn tại
+                           sh '''
                             mkdir -p /kaniko/.docker
                             
-                            # 2. Tạo chuỗi xác thực base64 sạch (không có ký tự xuống dòng)
-                            AUTH=$(echo -n "${DOCKER_USER}:${DOCKER_PASS}" | base64 | tr -d '\n')
+                            AUTH=$(echo -n "${DOCKER_USER}:${DOCKER_PASS}" | base64 | tr -d '\\n')
                             
-                            # 3. Ghi file config.json đúng định dạng mà Kaniko yêu cầu
-                            cat <<EOF > /kaniko/.docker/config.json
-                                {
-                                "auths": {
-                                    "https://index.docker.io/v1/": {
-                                    "auth": "${AUTH}"
-                                    }
-                                }
-                                }
-                                EOF
-                            # 4. Thực thi Kaniko với context chính xác
+                            printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$AUTH" > /kaniko/.docker/config.json
+                            
                             /kaniko/executor \
                                 --context ${WORKSPACE}/${params.SERVICE_NAME}/client \
                                 --dockerfile ${WORKSPACE}/${params.SERVICE_NAME}/client/Dockerfile \
