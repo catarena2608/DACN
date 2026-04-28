@@ -71,14 +71,14 @@ pipeline {
                            sh '''
                             mkdir -p /kaniko/.docker
                             
-                            AUTH=$(echo -n "${DOCKER_USER}:${DOCKER_PASS}" | base64 | tr -d '\\n')
+                            AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
                             
                             printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}' "$AUTH" > /kaniko/.docker/config.json
                             
                             /kaniko/executor \
-                                --context ${WORKSPACE}/${params.SERVICE_NAME}/client \
-                                --dockerfile ${WORKSPACE}/${params.SERVICE_NAME}/client/Dockerfile \
-                                --destination ${DOCKERHUB_REPO}/${params.SERVICE_NAME}:${BUILD_NUMBER}
+                                --context $WORKSPACE/${params.SERVICE_NAME}/client \
+                                --dockerfile $WORKSPACE/${params.SERVICE_NAME}/client/Dockerfile \
+                                --destination $DOCKERHUB_REPO/${params.SERVICE_NAME}:$BUILD_NUMBER
                             '''
                         }
                     }
