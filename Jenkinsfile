@@ -64,11 +64,11 @@ pipeline {
 
         stage('Build & Push with Kaniko') {
             steps {
-                container('kaniko') {
+                container(name: 'kaniko', shell: '/busybox/sh') {
                     // Thay 'dockerhub-auth' bằng ID chính xác của credential bạn tạo trong Jenkins
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         script {
-                           sh '''
+                           sh '''#!/busybox/sh
                             mkdir -p /kaniko/.docker
                             
                             AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PASS" | base64 | tr -d '\\n')
