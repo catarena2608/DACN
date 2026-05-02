@@ -1,33 +1,102 @@
 version: "3.8"
 
 services:
-  backend:
+  auth:
     build: ./backend-auth
-    ports:
-      - "5000:5000"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017/mydacn
+    container_name: auth-service
+    env_file:
+      - ./backend-auth/.env.dev
     depends_on:
       - mongo
+      - redis-cluster-init
+    networks:
+      - app-network
+
+  product:
+    build: ./backend-product
+    container_name: product-service
+    env_file:
+      - ./backend-product/.env.dev
+    depends_on:
+      - mongo
+      - redis-cluster-init
+    networks:
+      - app-network
 
   frontend:
     build: ./frontend/client
+    container_name: frontend-ui
+    networks:
+      - app-network
+
+  gateway:
+    build: ./gateway
+    container_name: api-gateway
+    env_file:
+      - ./gateway/.env.dev
     ports:
       - "3000:3000"
+    networks:
+      - app-network
+
+  nginx:
+    build: ./nginx
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway
+      - frontend
+    networks:
+      - app-network
 
   mongo:
     image: mongo:latest
+    container_name: mongodb
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    networks:
+      - app-network
+
+  redis-1:
+    image: redis:latest
+    container_name: redis-1
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    networks:
+      - app-network
+
+  redis-2:
+    image: redis:latest
+    container_name: redis-2
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    networks:
+      - app-network
+
+  redis-3:
+    image: redis:latest
+    container_name: redis-3
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    networks:
+      - app-network
   
-  nginx:
-    image: ./nginx
-    ports:
-      - "80:80"
-  
-  gateway:
-    build: ./gateway
-    ports:
-      - "8080:8080"
+  redis-cluster-init:
+    image: redis:latest
+    container_name: redis-cluster-init
+    networks:
+      - app-network
+    depends_on:
+      - redis-1
+      - redis-2
+      - redis-3
+    command: >
+      sh -c "sleep 5 && 
+      redis-cli --cluster create redis-1:6379 redis-2:6379 redis-3:6379 --cluster-replicas 0 --cluster-yes"
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
