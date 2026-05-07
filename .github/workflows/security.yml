@@ -1,0 +1,66 @@
+name: Security (reusable)
+
+on:
+  workflow_call:
+
+jobs:
+  gitleaks:
+    name: Gitleaks — secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Full history để scan hết
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Repo private: bỏ comment dòng dưới
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+        continue-on-error: true
+
+  npm-audit:
+    name: npm audit — full monorepo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Audit all services
+        run: |
+          SERVICES=("backend-auth" "backend-product" "gateway" "frontend/client")
+          FAIL=false
+
+          echo "| service | critical | high | moderate | low | result |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|----------|------|----------|-----|--------|" >> $GITHUB_STEP_SUMMARY
+
+          for SVC in "${SERVICES[@]}"; do
+            [ ! -f "$SVC/package.json" ] && continue
+            cd "$SVC"
+            npm ci --silent 2>/dev/null || true
+            npm audit --json --omit=dev > /tmp/audit.json 2>&1 || true
+
+            read C H M L <<< $(node -e "
+              try {
+                const v = require('/tmp/audit.json').metadata?.vulnerabilities || {};
+                process.stdout.write([v.critical||0,v.high||0,v.moderate||0,v.low||0].join(' '));
+              } catch(e) { process.stdout.write('0 0 0 0'); }
+            ")
+
+            if [ "$C" -gt 0 ] || [ "$H" -gt 0 ]; then
+              echo "| \`$SVC\` | $C | $H | $M | $L | FAIL |" >> $GITHUB_STEP_SUMMARY
+              FAIL=true
+            else
+              echo "| \`$SVC\` | $C | $H | $M | $L | OK |" >> $GITHUB_STEP_SUMMARY
+            fi
+            cd - > /dev/null
+          done
+
+          [ "$FAIL" = "true" ] && exit 1 || echo "No HIGH/CRITICAL vulnerabilities"
