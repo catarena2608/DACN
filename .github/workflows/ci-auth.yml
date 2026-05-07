@@ -7,6 +7,12 @@ on:
       - "backend-auth/**"      
       - ".github/workflows/ci-auth.yml"
 
+  pull_request:
+    branches: ["develop"]
+    paths:
+      - "backend-auth/**"
+      - ".github/workflows/ci-auth.yml"
+
 concurrency:
   group: ci-auth-${{ github.ref }}
   cancel-in-progress: true
