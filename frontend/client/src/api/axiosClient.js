@@ -43,7 +43,7 @@ axiosClient.interceptors.response.use(
 
         originalRequest.headers.Authorization = `Bearer ${res.data.accessToken}`;
         return axiosClient(originalRequest);
-      } catch (e) {
+      } catch (_error) {
         store.dispatch(logout());
       }
     }
