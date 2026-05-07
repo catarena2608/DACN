@@ -89,10 +89,11 @@ jobs:
       - name: Init Redis cluster
         run: |
           docker compose up redis-cluster-init
-          CLUSTER_OK=$(docker compose exec -T redis-1 \
-            redis-cli cluster info | grep cluster_state | grep -c ok || true)
-          if [ "$CLUSTER_OK" -ne "1" ]; then
-            echo "Redis cluster failed"
+          # Kiểm tra trực tiếp xem trạng thái có phải là 'ok' không
+          STATE=$(docker compose exec -T redis-1 redis-cli cluster info | grep cluster_state | cut -d: -f2 | tr -d '\r')
+          echo "Current Redis Cluster State: '$STATE'"
+          if [ "$STATE" != "ok" ]; then
+            echo "Redis cluster failed with state: $STATE"
             docker compose logs redis-cluster-init
             exit 1
           fi
