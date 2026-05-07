@@ -7,6 +7,12 @@ on:
       - "frontend/**"
       - ".github/workflows/ci-frontend.yml"
 
+  pull_request:
+    branches: ["develop"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/ci-frontend.yml"
+
 concurrency:
   group: ci-frontend-${{ github.ref }}
   cancel-in-progress: true

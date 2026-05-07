@@ -7,6 +7,12 @@ on:
       - "backend-product/**"
       - ".github/workflows/ci-product.yml"
 
+  pull_request:
+    branches: ["develop"]
+    paths:
+      - "backend-product/**"
+      - ".github/workflows/ci-product.yml"
+
 concurrency:
   group: ci-product-${{ github.ref }}
   cancel-in-progress: true
