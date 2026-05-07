@@ -89,6 +89,7 @@ jobs:
       - name: Init Redis cluster
         run: |
           docker compose up redis-cluster-init
+          sleep 5
           # Kiểm tra trực tiếp xem trạng thái có phải là 'ok' không
           STATE=$(docker compose exec -T redis-1 redis-cli cluster info | grep cluster_state | cut -d: -f2 | tr -d '\r')
           echo "Current Redis Cluster State: '$STATE'"
