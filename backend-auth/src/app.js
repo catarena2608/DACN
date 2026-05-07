@@ -9,6 +9,7 @@ const path = require("path");
 const bcrypt = require("bcrypt");
 
 const authRoutes = require("./routes/auth.routes");
+const healthRoutes = require("./routes/health.routes");
 const {
   countUsers,
   insertManyUsers,
@@ -20,6 +21,7 @@ app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
 
+app.use("/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 
 // ================== MONGOOSE CONNECT ==================
