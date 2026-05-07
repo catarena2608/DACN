@@ -1,0 +1,43 @@
+name: CI — product service
+
+on:
+  push:
+    branches: ["develop"]
+    paths:
+      - "backend-product/**"
+      - ".github/workflows/ci-product.yml"
+
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend-product/**"
+
+concurrency:
+  group: ci-product-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: product — lint / test / audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend-product/package-lock.json
+
+      - run: npm ci
+        working-directory: backend-product
+
+      - run: npm run lint --if-present
+        working-directory: backend-product
+
+      - run: npm test --if-present -- --passWithNoTests
+        working-directory: backend-product
+
+      - run: npm audit --audit-level=high --omit=dev
+        working-directory: backend-product

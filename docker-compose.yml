@@ -9,6 +9,12 @@ services:
     depends_on:
       - mongo
       - redis-cluster-init
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - app-network
 
@@ -20,6 +26,12 @@ services:
     depends_on:
       - mongo
       - redis-cluster-init
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - app-network
 
