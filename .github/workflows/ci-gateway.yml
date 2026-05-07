@@ -7,11 +7,6 @@ on:
       - "gateway/**"
       - ".github/workflows/ci-gateway.yml"
 
-  pull_request:
-    branches: ["main"]
-    paths:
-      - "gateway/**"
-
 concurrency:
   group: ci-gateway-${{ github.ref }}
   cancel-in-progress: true
