@@ -1,6 +1,9 @@
+// health.routes.js
+const express = require('express');
+const router = express.Router();
 const axios = require('axios');
 
-exports.checkSystemHealth = async (req, res) => {
+router.get('/', async (req, res) => {
   const services = [
     { name: 'auth_service', url: process.env.AUTH_SERVICE_URL + '/health' },
     { name: 'product_service', url: process.env.PRODUCT_SERVICE_URL + '/health' }
@@ -25,4 +28,6 @@ exports.checkSystemHealth = async (req, res) => {
 
   const isAnyDown = healthStatus.dependencies.some(s => s.status === "DOWN");
   res.status(isAnyDown ? 503 : 200).json(healthStatus);
-};
+});
+
+module.exports = router;
