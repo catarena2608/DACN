@@ -1,0 +1,160 @@
+# Default values for dacn-helm.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  imagePullSecrets: []
+  domain: dacn.local
+
+# Service Configurations
+services:
+  auth:
+    enabled: true
+    name: auth
+    replicaCount: 2
+    image:
+      repository: vantien/backend-auth
+      pullPolicy: IfNotPresent
+      tag: "latest"
+    service:
+      type: ClusterIP
+      port: 3001
+    env:
+      NODE_ENV: production
+      PORT: 3001
+      MONGODB_URI: "mongodb://mongodb:27017/auth_db"
+      REDIS_HOST: "redis-cluster"
+      REDIS_PORT: 6379
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+    healthCheck:
+      path: /health
+      port: 3001
+
+  product:
+    enabled: true
+    name: product
+    replicaCount: 2
+    image:
+      repository: vantien/backend-product
+      pullPolicy: IfNotPresent
+      tag: "latest"
+    service:
+      type: ClusterIP
+      port: 3002
+    env:
+      NODE_ENV: production
+      PORT: 3002
+      MONGODB_URI: "mongodb://mongodb:27017/product_db"
+      REDIS_HOST: "redis-cluster"
+      REDIS_PORT: 6379
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+    healthCheck:
+      path: /health
+      port: 3002
+
+  gateway:
+    enabled: true
+    name: gateway
+    replicaCount: 2
+    image:
+      repository: vantien/gateway
+      pullPolicy: IfNotPresent
+      tag: "latest"
+    service:
+      type: ClusterIP
+      port: 3000
+    env:
+      NODE_ENV: production
+      PORT: 3000
+      AUTH_SERVICE_URL: "http://auth:3001"
+      PRODUCT_SERVICE_URL: "http://product:3002"
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    healthCheck:
+      path: /health
+      port: 3000
+
+  frontend:
+    enabled: true
+    name: frontend
+    replicaCount: 1
+    image:
+      repository: vantien/frontend
+      pullPolicy: IfNotPresent
+      tag: "latest"
+    service:
+      type: ClusterIP
+      port: 80
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    healthCheck:
+      path: /
+      port: 80
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: dacn.local
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 80
+        - path: /api
+          pathType: Prefix
+          serviceName: gateway
+          servicePort: 3000
+
+# Infrastructure (can be externalized or deployed via dependencies)
+infrastructure:
+  mongodb:
+    enabled: true
+    image: mongo:latest
+    service:
+      port: 27017
+    persistence:
+      enabled: true
+      size: 8Gi
+  redis:
+    enabled: true
+    image: redis:latest
+    cluster:
+      enabled: true
+      replicas: 0
