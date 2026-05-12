@@ -1,0 +1,58 @@
+{{- if .Values.infrastructure.mongodb.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  labels:
+    app: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: {{ .Values.infrastructure.mongodb.image }}
+          ports:
+            - containerPort: {{ .Values.infrastructure.mongodb.service.port }}
+          {{- if .Values.infrastructure.mongodb.persistence.enabled }}
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+          {{- end }}
+      {{- if .Values.infrastructure.mongodb.persistence.enabled }}
+      volumes:
+        - name: mongo-data
+          persistentVolumeClaim:
+            claimName: mongo-pvc
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  ports:
+    - port: {{ .Values.infrastructure.mongodb.service.port }}
+      targetPort: {{ .Values.infrastructure.mongodb.service.port }}
+  selector:
+    app: mongodb
+{{- if .Values.infrastructure.mongodb.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.infrastructure.mongodb.persistence.size }}
+{{- end }}
+{{- end }}
