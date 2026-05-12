@@ -23,7 +23,13 @@ app.use("/health", healthRoutes);
 // ================== JWT MIDDLEWARE ==================
 app.use(async (req, res, next) => {
   // ❌ Bỏ qua kiểm tra JWT cho các request Auth
-  if (req.originalUrl.startsWith("/api/auth")) return next();
+  if (
+    req.originalUrl.startsWith("/api/auth") || 
+    req.originalUrl.endsWith("/health") ||
+    req.originalUrl === "/health"
+  ) {
+    return next();
+  }
 
   // ✅ Lấy token (ưu tiên cookie, sau đó là header Authorization)
   const token =
