@@ -97,6 +97,8 @@ services:
       requests:
         cpu: 100m
         memory: 128Mi
+    autoscaling:
+      enabled: false
     healthCheck:
       path: /health
       port: 3000
@@ -119,6 +121,8 @@ services:
       requests:
         cpu: 50m
         memory: 64Mi
+    autoscaling:
+      enabled: false
     healthCheck:
       path: /
       port: 80
