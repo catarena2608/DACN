@@ -136,7 +136,7 @@ jobs:
           }
 
           echo "── Gateway :3000 ──────────────────────────"
-          check "gateway /health"           "$BASE/health"             "200"
+          check "gateway /health"           "$BASE/api/health"             "200"
           check "auth route"                "$AUTH/health"    "200"
           check "product route"             "$PRODUCT/health" "200"
 
