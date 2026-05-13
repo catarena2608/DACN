@@ -142,7 +142,7 @@ jobs:
 
           echo "── Nginx :80 ──────────────────────────────"
           check "nginx → gateway → auth"    "$NGINX/api/auth/health"            "200"
-          check "nginx → gateway → product" "$NGINX/api/product/health"            "200"
+          check "nginx → gateway → product" "$NGINX/api/products/health"            "200"
           check "nginx → frontend"          "$NGINX/"                  "200"
 
           echo "── Internal (docker exec) ─────────────────"
