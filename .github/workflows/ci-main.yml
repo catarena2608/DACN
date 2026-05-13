@@ -121,6 +121,8 @@ jobs:
         run: |
           BASE="http://localhost:3000"
           NGINX="http://localhost:80"
+          AUTH="http://localhost:3001"
+          PRODUCT="http://localhost:3002"
           FAIL=false
 
           check() {
@@ -135,11 +137,11 @@ jobs:
 
           echo "── Gateway :3000 ──────────────────────────"
           check "gateway /health"           "$BASE/health"             "200"
-          check "auth route"                "$BASE/api/auth/health"    "200"
-          check "product route"             "$BASE/api/products/health" "200"
+          check "auth route"                "$AUTH/health"    "200"
+          check "product route"             "$PRODUCT/health" "200"
 
           echo "── Nginx :80 ──────────────────────────────"
-          check "nginx → gateway"           "$NGINX/api/auth/health"   "200"
+          check "nginx → gateway"           "$NGINX/health"            "200"
           check "nginx → frontend"          "$NGINX/"                  "200"
 
           echo "── Internal (docker exec) ─────────────────"
