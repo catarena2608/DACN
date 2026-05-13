@@ -141,7 +141,8 @@ jobs:
           check "product route"             "$PRODUCT/health" "200"
 
           echo "── Nginx :80 ──────────────────────────────"
-          check "nginx → gateway"           "$NGINX/health"            "200"
+          check "nginx → gateway → auth"    "$NGINX/api/auth/health"            "200"
+          check "nginx → gateway → product" "$NGINX/api/product/health"            "200"
           check "nginx → frontend"          "$NGINX/"                  "200"
 
           echo "── Internal (docker exec) ─────────────────"
