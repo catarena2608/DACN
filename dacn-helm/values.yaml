@@ -13,7 +13,7 @@ services:
     name: auth
     replicaCount: 2
     image:
-      repository: vantien/backend-auth
+      repository: ghcr.io/catarena2608/auth:latest
       pullPolicy: IfNotPresent
       tag: "latest"
     service:
@@ -46,7 +46,7 @@ services:
     name: product
     replicaCount: 2
     image:
-      repository: vantien/backend-product
+      repository: ghcr.io/catarena2608/product:latest
       pullPolicy: IfNotPresent
       tag: "latest"
     service:
@@ -79,7 +79,7 @@ services:
     name: gateway
     replicaCount: 2
     image:
-      repository: vantien/gateway
+      repository: ghcr.io/catarena2608/gateway:latest
       pullPolicy: IfNotPresent
       tag: "latest"
     service:
@@ -100,7 +100,7 @@ services:
     autoscaling:
       enabled: false
     healthCheck:
-      path: /health
+      path: /api/health
       port: 3000
 
   frontend:
@@ -108,7 +108,7 @@ services:
     name: frontend
     replicaCount: 1
     image:
-      repository: vantien/frontend
+      repository: ghcr.io/catarena2608/frontend:latest
       pullPolicy: IfNotPresent
       tag: "latest"
     service:
