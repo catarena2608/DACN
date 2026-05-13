@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use("/health", healthRoutes);
-app.use("/api/auth", authRoutes);
+app.use("/", authRoutes);
 
 // ================== MONGOOSE CONNECT ==================
 console.log("URI:", process.env.URI);

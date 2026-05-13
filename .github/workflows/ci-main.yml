@@ -120,7 +120,7 @@ jobs:
       - name: Run smoke tests
         run: |
           BASE="http://localhost:3000"
-          NGINX="http://localhost:80"
+          NGINX="http://localhost"
           AUTH="http://localhost:3001"
           PRODUCT="http://localhost:3002"
           FAIL=false

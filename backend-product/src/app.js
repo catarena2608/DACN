@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/health", healthRoutes);
-app.use("/api/product", productRoutes);
+app.use("/", productRoutes);
 
 // ================== MONGOOSE CONNECT ==================
 console.log("URI:", process.env.URI);
