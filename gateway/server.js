@@ -19,7 +19,7 @@
   const serviceMap = require("./routes/routes.config");
   const healthRoutes = require("./routes/health.routes");
 
-  app.use("/health", healthRoutes);
+  app.use("/api/health", healthRoutes);
   // ================== JWT MIDDLEWARE ==================
   app.use(async (req, res, next) => {
     // ❌ Bỏ qua kiểm tra JWT cho các request Auth
