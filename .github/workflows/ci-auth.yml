@@ -1,0 +1,44 @@
+name: CI — auth service
+
+on:
+  push:
+    branches: ["develop"]
+    paths:
+      - "backend-auth/**"      
+      - ".github/workflows/ci-auth.yml"
+
+  pull_request:
+    branches: ["develop"]
+    paths:
+      - "backend-auth/**"
+      - ".github/workflows/ci-auth.yml"
+
+concurrency:
+  group: ci-auth-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: auth — lint / test / audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend-auth/package-lock.json
+
+      - run: npm ci
+        working-directory: backend-auth
+
+      - run: npm run lint --if-present
+        working-directory: backend-auth
+
+      - run: npm test --if-present -- --passWithNoTests
+        working-directory: backend-auth
+
+      - run: npm audit --audit-level=high --omit=dev
+        working-directory: backend-auth

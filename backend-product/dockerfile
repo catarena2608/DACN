@@ -10,7 +10,7 @@ FROM node:20-alpine
 
 RUN apk add --no-cache curl
 
-WORKDIR /app/auth
+WORKDIR /app/product
 
 ENV NODE_ENV=production
 
@@ -20,6 +20,6 @@ COPY --chown=node:node . .
 
 USER node
 
-EXPOSE 3001
+EXPOSE 3002
 
 CMD ["npm", "start"]

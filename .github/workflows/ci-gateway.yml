@@ -1,0 +1,44 @@
+name: CI — gateway
+
+on:
+  push:
+    branches: ["develop"]
+    paths:
+      - "gateway/**"
+      - ".github/workflows/ci-gateway.yml"
+
+  pull_request:
+    branches: ["develop"]
+    paths:
+      - "gateway/**"
+      - ".github/workflows/ci-gateway.yml"
+
+concurrency:
+  group: ci-gateway-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: gateway — lint / test / audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: gateway/package-lock.json
+
+      - run: npm ci
+        working-directory: gateway
+
+      - run: npm run lint --if-present
+        working-directory: gateway
+
+      - run: npm test --if-present -- --passWithNoTests
+        working-directory: gateway
+
+      - run: npm audit --audit-level=high --omit=dev
+        working-directory: gateway

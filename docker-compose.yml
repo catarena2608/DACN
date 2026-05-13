@@ -1,33 +1,141 @@
 version: "3.8"
 
 services:
-  backend:
+  auth:
     build: ./backend-auth
+    container_name: auth-service
+    env_file:
+      - ./backend-auth/.env.dev
     ports:
-      - "5000:5000"
-    environment:
-      - MONGO_URI=mongodb://mongo:27017/mydacn
+      - "3001:3001"
     depends_on:
       - mongo
+      - redis-cluster-init
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-network
+
+  product:
+    build: ./backend-product
+    container_name: product-service
+    env_file:
+      - ./backend-product/.env.dev
+    ports:
+      - "3002:3002"
+    depends_on:
+      - mongo
+      - redis-cluster-init
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-network
 
   frontend:
     build: ./frontend/client
+    container_name: frontend-ui
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-network
+
+  gateway:
+    build: ./gateway
+    container_name: api-gateway
+    env_file:
+      - ./gateway/.env.dev
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app-network
+
+  nginx:
+    build: ./nginx
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+    depends_on:
+      - gateway
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/auth/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-network
 
   mongo:
     image: mongo:latest
+    container_name: mongodb
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    networks:
+      - app-network
+
+  redis-1:
+    image: redis:latest
+    container_name: redis-1
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    networks:
+      - app-network
+
+  redis-2:
+    image: redis:latest
+    container_name: redis-2
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    networks:
+      - app-network
+
+  redis-3:
+    image: redis:latest
+    container_name: redis-3
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    networks:
+      - app-network
   
-  nginx:
-    image: ./nginx
-    ports:
-      - "80:80"
-  
-  gateway:
-    build: ./gateway
-    ports:
-      - "8080:8080"
+  redis-cluster-init:
+    image: redis:latest
+    container_name: redis-cluster-init
+    networks:
+      - app-network
+    depends_on:
+      - redis-1
+      - redis-2
+      - redis-3
+    command: >
+      sh -c "sleep 5 && 
+      redis-cli --cluster create redis-1:6379 redis-2:6379 redis-3:6379 --cluster-replicas 0 --cluster-yes"
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo-data:

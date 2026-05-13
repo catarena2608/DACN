@@ -1,0 +1,241 @@
+name: CI/CD — main (smoke test + push)
+
+on:
+  push:
+    branches: ["main"]
+
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: main-pipeline
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  security:
+    name: Security scan
+    uses: ./.github/workflows/security.yml
+    secrets: inherit
+
+  build:
+    name: Build & test — ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: auth
+            path: backend-auth
+          - name: product
+            path: backend-product
+          - name: gateway
+            path: gateway
+          - name: frontend
+            path: frontend/client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ${{ matrix.service.path }}/package-lock.json
+
+      - run: npm ci
+        working-directory: ${{ matrix.service.path }}
+
+      - run: npm run lint --if-present
+        working-directory: ${{ matrix.service.path }}
+
+      - run: npm test --if-present -- --passWithNoTests
+        working-directory: ${{ matrix.service.path }}
+
+      - run: npm audit --audit-level=high --omit=dev
+        working-directory: ${{ matrix.service.path }}
+
+  smoke-test:
+    name: Smoke test (full stack)
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Create .env.dev files
+        run: |
+          printf '%s' "${{ secrets.AUTH_ENV_DEV }}"     > backend-auth/.env.dev
+          printf '%s' "${{ secrets.PRODUCT_ENV_DEV }}"  > backend-product/.env.dev
+          printf '%s' "${{ secrets.GATEWAY_ENV_DEV }}"  > gateway/.env.dev
+
+      - name: Build all images (cached)
+        run: docker compose build --parallel
+
+      - name: Start mongo + redis nodes
+        run: |
+          docker compose up -d mongo redis-1 redis-2 redis-3
+          echo "Waiting for MongoDB..."
+          timeout 60 bash -c \
+            'until docker compose exec -T mongo mongosh --eval "db.adminCommand(\"ping\")" --quiet 2>/dev/null; \
+             do sleep 3; done'
+          echo "MongoDB ready"
+
+      - name: Init Redis cluster
+        run: |
+          docker compose up redis-cluster-init
+          sleep 5
+          # Kiểm tra trực tiếp xem trạng thái có phải là 'ok' không
+          STATE=$(docker compose exec -T redis-1 redis-cli cluster info | grep cluster_state | cut -d: -f2 | tr -d '\r')
+          echo "Current Redis Cluster State: '$STATE'"
+          if [ "$STATE" != "ok" ]; then
+            echo "Redis cluster failed with state: $STATE"
+            docker compose logs redis-cluster-init
+            exit 1
+          fi
+          echo "Redis cluster OK (3 nodes)"
+
+      - name: Start application services
+        run: docker compose up -d auth product gateway frontend nginx
+
+      - name: Wait for services healthy
+        run: |
+          TIMEOUT=120
+          ELAPSED=0
+          until [ $ELAPSED -ge $TIMEOUT ]; do
+            A=$(docker inspect auth-service    --format='{{.State.Health.Status}}' 2>/dev/null || echo "x")
+            P=$(docker inspect product-service --format='{{.State.Health.Status}}' 2>/dev/null || echo "x")
+            echo "  auth=$A | product=$P (${ELAPSED}s)"
+            [ "$A" = "healthy" ] && [ "$P" = "healthy" ] && break
+            sleep 5; ELAPSED=$((ELAPSED+5))
+          done
+          [ $ELAPSED -ge $TIMEOUT ] && { docker compose logs auth product; exit 1; }
+          echo "All services healthy"
+
+      - name: Run smoke tests
+        run: |
+          BASE="http://localhost:3000"
+          NGINX="http://localhost"
+          AUTH="http://localhost:3001"
+          PRODUCT="http://localhost:3002"
+          FAIL=false
+
+          check() {
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 10 "$2" || echo "000")
+            if [ "$STATUS" = "$3" ]; then
+              echo "  PASS  $1 → $STATUS"
+            else
+              echo "  FAIL  $1 → $STATUS (expected $3)"
+              FAIL=true
+            fi
+          }
+
+          echo "── Gateway :3000 ──────────────────────────"
+          check "gateway /health"           "$BASE/api/health"             "200"
+          check "auth route"                "$AUTH/health"    "200"
+          check "product route"             "$PRODUCT/health" "200"
+
+          echo "── Nginx :80 ──────────────────────────────"
+          check "nginx → gateway → auth"    "$NGINX/api/auth/health"            "200"
+          check "nginx → gateway → product" "$NGINX/api/products/health"            "200"
+          check "nginx → frontend"          "$NGINX/"                  "200"
+
+          echo "── Internal (docker exec) ─────────────────"
+          A=$(docker exec auth-service    curl -sf -o /dev/null -w "%{http_code}" http://localhost:3001/health || echo "000")
+          P=$(docker exec product-service curl -sf -o /dev/null -w "%{http_code}" http://localhost:3002/health || echo "000")
+          [ "$A" = "200" ] && echo "  PASS  auth internal → $A"    || { echo "  FAIL  auth internal → $A";    FAIL=true; }
+          [ "$P" = "200" ] && echo "  PASS  product internal → $P" || { echo "  FAIL  product internal → $P"; FAIL=true; }
+
+          [ "$FAIL" = "true" ] && exit 1
+          echo ""
+          echo "All smoke tests passed"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Smoke test — ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "| container | status | health |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          for C in auth-service product-service api-gateway frontend-ui nginx-proxy mongodb redis-1 redis-2 redis-3; do
+            ST=$(docker inspect $C --format='{{.State.Status}}'              2>/dev/null || echo "—")
+            HL=$(docker inspect $C --format='{{.State.Health.Status}}'       2>/dev/null || echo "—")
+            IC=$([ "$ST" = "running" ] && echo "✅" || echo "❌")
+            echo "| $IC $C | $ST | $HL |" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: Print logs on failure
+        if: failure()
+        run: |
+          for SVC in auth product gateway; do
+            echo "=== $SVC ===" && docker compose logs --tail=60 $SVC
+          done
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  push-images:
+    name: Push — ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    needs: [smoke-test, security]
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: auth
+            context: ./backend-auth
+          - name: product
+            context: ./backend-product
+          - name: gateway
+            context: ./gateway
+          - name: frontend
+            context: ./frontend/client
+          - name: nginx
+            context: ./nginx
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.OWNER }}/${{ matrix.service.name }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to:   type=gha,mode=max,scope=${{ matrix.service.name }}
+
+      - name: Summary
+        run: |
+          echo "### ${{ matrix.service.name }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
