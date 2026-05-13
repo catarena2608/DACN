@@ -6,6 +6,8 @@ services:
     container_name: auth-service
     env_file:
       - ./backend-auth/.env.dev
+    ports:
+      - "3001:3001"
     depends_on:
       - mongo
       - redis-cluster-init
@@ -23,6 +25,8 @@ services:
     container_name: product-service
     env_file:
       - ./backend-product/.env.dev
+    ports:
+      - "3002:3002"
     depends_on:
       - mongo
       - redis-cluster-init
