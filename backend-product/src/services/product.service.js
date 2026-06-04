@@ -1,6 +1,7 @@
 const productModel = require("../models/product.model");
 const detailModel = require("../models/detail.model");
 const redis = require("../utils/redis");
+const {acquireLock,releaseLock,} = require("../utils/lock");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ================== GET ==================
@@ -164,4 +165,98 @@ exports.deleteProduct = async (id) => {
 
   const keys = await redis.keys("products:*");
   if (keys.length) await redis.del(keys);
+};
+
+// ================== Lock + RabbitMQ ==================
+
+// ================== Reverse ==================
+exports.reserveStock = async (productID, quantity) => {
+  const lockKey = `lock:product:${productID}`;
+
+  const token = await acquireLock(lockKey, 10000);
+
+  if (!token) {
+    throw new Error("Product busy");
+  }
+
+  try {
+    const product = await productModel.findProductById(productID);
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
+    if (product.stock < quantity) {
+      throw new Error("Out of stock");
+    }
+
+    await productModel.updateProduct(
+      productID,
+      {
+        stock: product.stock - quantity,
+      }
+    );
+
+    await redis.del(`product:${productID}`);
+
+    const keys =await redis.keys("products:*");
+
+    if (keys.length) {
+      await redis.del(...keys);
+    }
+
+    return {
+      success: true,
+      productID,
+      name: product.name,
+      price: product.price,
+      quantity,
+    };
+
+  } finally {
+    await releaseLock(lockKey,token);
+  }
+};
+
+// ================== Release ==================
+exports.releaseStock = async (productID,quantity) => {
+
+  const lockKey =`lock:product:${productID}`;
+
+  const token =await acquireLock(lockKey,10000);
+
+  if (!token) {
+    throw new Error("Product busy");
+  }
+
+  try {
+
+    const product =await productModel.findProductById(productID);
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
+    await productModel.updateProduct(
+      productID,
+      {
+        stock: product.stock + quantity,
+      }
+    );
+
+    await redis.del(`product:${productID}`);
+
+    const keys =await redis.keys("products:*");
+
+    if (keys.length) {
+      await redis.del(...keys);
+    }
+
+    return {
+      success: true,
+    };
+
+  } finally {
+    await releaseLock(lockKey,token);
+  }
 };

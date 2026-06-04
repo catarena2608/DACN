@@ -11,6 +11,7 @@ const productSchema = new mongoose.Schema({
   image: String,
   link: String,
   category: [String],
+  stock: Number,
 });
 
 productSchema.index({ name: "text" });

@@ -1,21 +1,24 @@
 const express = require("express");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-const cors = require("cors");
 
-const productRoutes = require("./routes/product.routes");
 const healthRoutes = require("./routes/health.routes");
+const orderRoutes = require("./routes/order.routes");
 
-const startProductConsumer =require("./utils/product.consumer");
+const { connectRabbit } = require("./utils/rabbit");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 
 app.use("/health", healthRoutes);
-app.use("/", productRoutes);
+app.use("/", orderRoutes);
 
 // ================== MONGOOSE CONNECT ==================
 console.log("URI:", process.env.URI);
@@ -26,11 +29,10 @@ async function connectDB() {
   console.log("🔌 MongoDB connected");
 }
 
-
 // ================== INIT ==================
 async function init() {
   await connectDB();
-  await startProductConsumer();
+  await connectRabbit();
 }
 
 init().catch(console.error);

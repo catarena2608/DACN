@@ -4,6 +4,7 @@
   const cors = require("cors");
   const cookieParser = require("cookie-parser");
   const jwt = require("jsonwebtoken");
+  const rateLimiter =require("./middleware/rateLimiter");
 
   const app = express();
 
@@ -51,6 +52,10 @@
         .json({ message: "Token không hợp lệ hoặc đã hết hạn" });
     }
   });
+  // ================== RATE LIMITER ==================
+
+  app.use(rateLimiter);
+
 
   // ================== PROXY ==================
   app.use("/api", (req, res) => {

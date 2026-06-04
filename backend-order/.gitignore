@@ -1,0 +1,23 @@
+# Dependency directories (Thư mục thư viện rất nặng, không nên push)
+node_modules/
+jspm_packages/
+
+# Environment variables (Chứa thông tin bảo mật như API Key, Database URL)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS metadata (File rác của hệ điều hành)
+.DS_Store
+Thumbs.db
+
+# Build folders (Thư mục sau khi build code)
+dist/
+build/
