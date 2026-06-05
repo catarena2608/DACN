@@ -1,0 +1,110 @@
+global:
+  environment: staging
+  domain: staging.dacn.example.com
+  imageTag: latest
+
+services:
+  auth:
+    replicaCount: 3
+    env:
+      REDIS_NODES: staging-redis-cluster:6379
+    envFromSecrets:
+      - dacn-auth-staging-secrets
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 700m
+        memory: 768Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 70
+
+  product:
+    replicaCount: 3
+    env:
+      REDIS_NODES: staging-redis-cluster:6379
+      RABBITMQ_URL: amqp://staging-rabbitmq:5672
+    envFromSecrets:
+      - dacn-product-staging-secrets
+    resources:
+      requests:
+        cpu: 250m
+        memory: 384Mi
+      limits:
+        cpu: 900m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 16
+      targetCPUUtilizationPercentage: 70
+
+  order:
+    replicaCount: 3
+    env:
+      REDIS_NODES: staging-redis-cluster:6379
+      RABBITMQ_URL: amqp://staging-rabbitmq:5672
+    envFromSecrets:
+      - dacn-order-staging-secrets
+    resources:
+      requests:
+        cpu: 250m
+        memory: 384Mi
+      limits:
+        cpu: 900m
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 16
+      targetCPUUtilizationPercentage: 70
+
+  gateway:
+    replicaCount: 3
+    envFromSecrets:
+      - dacn-gateway-staging-secrets
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 700m
+        memory: 768Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+
+  frontend:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 75
+
+ingress:
+  hosts:
+    - host: staging.dacn.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 80
+        - path: /api
+          pathType: Prefix
+          serviceName: gateway
+          servicePort: 3000
+
+infrastructure:
+  mongodb:
+    enabled: false
+  redis:
+    enabled: false
+  rabbitmq:
+    enabled: false

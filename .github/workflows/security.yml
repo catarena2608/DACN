@@ -33,7 +33,7 @@ jobs:
 
       - name: Audit all services
         run: |
-          SERVICES=("backend-auth" "backend-product" "gateway" "frontend/client")
+          SERVICES=("services/backend-auth" "services/backend-product" "services/backend-order" "apps/gateway" "apps/frontend")
           FAIL=false
 
           echo "| service | critical | high | moderate | low | result |" >> $GITHUB_STEP_SUMMARY
@@ -62,3 +62,22 @@ jobs:
           done
 
           [ "$FAIL" = "true" ] && exit 1 || echo "No HIGH/CRITICAL vulnerabilities"
+  sonarqube:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=E-commerceApplication
+            -Dsonar.sources=.
+            -Dsonar.exclusions=**/node_modules/**,**/test/**

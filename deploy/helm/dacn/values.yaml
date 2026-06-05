@@ -1,0 +1,194 @@
+# Base values for the DACN microservices platform.
+# Environment-specific overrides live in values-dev.yaml, values-staging.yaml,
+# and values-prod.yaml. Do not store real secrets in this file.
+
+global:
+  environment: dev
+  domain: dacn.local
+  imagePullSecrets: []
+  imageTag: latest
+
+services:
+  auth:
+    enabled: true
+    name: auth
+    replicaCount: 1
+    image:
+      repository: ghcr.io/catarena2608/auth
+      pullPolicy: IfNotPresent
+      tag: ""
+    service:
+      type: ClusterIP
+      port: 3001
+    env:
+      NODE_ENV: production
+      PORT: "3001"
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+    envFromSecrets: []
+    resources:
+      limits:
+        cpu: 300m
+        memory: 384Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+    healthCheck:
+      path: /health
+      port: 3001
+
+  product:
+    enabled: true
+    name: product
+    replicaCount: 1
+    image:
+      repository: ghcr.io/catarena2608/product
+      pullPolicy: IfNotPresent
+      tag: ""
+    service:
+      type: ClusterIP
+      port: 3002
+    env:
+      NODE_ENV: production
+      PORT: "3002"
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    envFromSecrets: []
+    resources:
+      limits:
+        cpu: 300m
+        memory: 384Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+    healthCheck:
+      path: /health
+      port: 3002
+
+  order:
+    enabled: true
+    name: order
+    replicaCount: 1
+    image:
+      repository: ghcr.io/catarena2608/order
+      pullPolicy: IfNotPresent
+      tag: ""
+    service:
+      type: ClusterIP
+      port: 3003
+    env:
+      NODE_ENV: production
+      PORT: "3003"
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    envFromSecrets: []
+    resources:
+      limits:
+        cpu: 300m
+        memory: 384Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+    healthCheck:
+      path: /health
+      port: 3003
+
+  gateway:
+    enabled: true
+    name: gateway
+    replicaCount: 1
+    image:
+      repository: ghcr.io/catarena2608/gateway
+      pullPolicy: IfNotPresent
+      tag: ""
+    service:
+      type: ClusterIP
+      port: 3000
+    env:
+      NODE_ENV: production
+      GATEWAY_PORT: "3000"
+      AUTH_SERVICE_URL: http://auth:3001
+      PRODUCT_SERVICE_URL: http://product:3002
+      ORDER_SERVICE_URL: http://order:3003
+    envFromSecrets: []
+    resources:
+      limits:
+        cpu: 300m
+        memory: 384Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    autoscaling:
+      enabled: false
+    healthCheck:
+      path: /api/health
+      port: 3000
+
+  frontend:
+    enabled: true
+    name: frontend
+    replicaCount: 1
+    image:
+      repository: ghcr.io/catarena2608/frontend
+      pullPolicy: IfNotPresent
+      tag: ""
+    service:
+      type: ClusterIP
+      port: 80
+    env: {}
+    envFromSecrets: []
+    resources:
+      limits:
+        cpu: 150m
+        memory: 192Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    autoscaling:
+      enabled: false
+    healthCheck:
+      path: /
+      port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  hosts:
+    - host: dacn.local
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 80
+        - path: /api
+          pathType: Prefix
+          serviceName: gateway
+          servicePort: 3000
+
+infrastructure:
+  mongodb:
+    enabled: true
+    image: mongo:7
+    service:
+      port: 27017
+    persistence:
+      enabled: true
+      size: 8Gi
+  redis:
+    enabled: true
+    image: redis:7
+    cluster:
+      enabled: false
+      replicas: 0
+  rabbitmq:
+    enabled: true
+    image: rabbitmq:3-management-alpine
+    service:
+      port: 5672
+      managementPort: 15672

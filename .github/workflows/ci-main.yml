@@ -14,6 +14,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
+  COMPOSE_FILE: deploy/compose/docker-compose.yml
 
 jobs:
   security:
@@ -29,13 +30,15 @@ jobs:
       matrix:
         service:
           - name: auth
-            path: backend-auth
+            path: services/backend-auth
           - name: product
-            path: backend-product
+            path: services/backend-product
+          - name: order
+            path: services/backend-order
           - name: gateway
-            path: gateway
+            path: apps/gateway
           - name: frontend
-            path: frontend/client
+            path: apps/frontend
 
     steps:
       - uses: actions/checkout@v4
@@ -70,21 +73,27 @@ jobs:
 
       - name: Create .env.dev files
         run: |
-          printf '%s' "${{ secrets.AUTH_ENV_DEV }}"     > backend-auth/.env.dev
-          printf '%s' "${{ secrets.PRODUCT_ENV_DEV }}"  > backend-product/.env.dev
-          printf '%s' "${{ secrets.GATEWAY_ENV_DEV }}"  > gateway/.env.dev
+          printf '%s' "${{ secrets.AUTH_ENV_DEV }}"     > services/backend-auth/.env.dev
+          printf '%s' "${{ secrets.PRODUCT_ENV_DEV }}"  > services/backend-product/.env.dev
+          printf '%s' "${{ secrets.ORDER_ENV_DEV }}"    > services/backend-order/.env.dev
+          printf '%s' "${{ secrets.GATEWAY_ENV_DEV }}"  > apps/gateway/.env.dev
 
       - name: Build all images (cached)
         run: docker compose build --parallel
 
       - name: Start mongo + redis nodes
         run: |
-          docker compose up -d mongo redis-1 redis-2 redis-3
+          docker compose up -d mongo rabbitmq redis-1 redis-2 redis-3
           echo "Waiting for MongoDB..."
           timeout 60 bash -c \
             'until docker compose exec -T mongo mongosh --eval "db.adminCommand(\"ping\")" --quiet 2>/dev/null; \
              do sleep 3; done'
           echo "MongoDB ready"
+          echo "Waiting for RabbitMQ..."
+          timeout 60 bash -c \
+            'until docker compose exec -T rabbitmq rabbitmq-diagnostics -q ping 2>/dev/null; \
+             do sleep 3; done'
+          echo "RabbitMQ ready"
 
       - name: Init Redis cluster
         run: |
@@ -101,7 +110,7 @@ jobs:
           echo "Redis cluster OK (3 nodes)"
 
       - name: Start application services
-        run: docker compose up -d auth product gateway frontend nginx
+        run: docker compose up -d auth product order gateway frontend nginx
 
       - name: Wait for services healthy
         run: |
@@ -110,11 +119,13 @@ jobs:
           until [ $ELAPSED -ge $TIMEOUT ]; do
             A=$(docker inspect auth-service    --format='{{.State.Health.Status}}' 2>/dev/null || echo "x")
             P=$(docker inspect product-service --format='{{.State.Health.Status}}' 2>/dev/null || echo "x")
-            echo "  auth=$A | product=$P (${ELAPSED}s)"
-            [ "$A" = "healthy" ] && [ "$P" = "healthy" ] && break
+            O=$(docker inspect order-service   --format='{{.State.Health.Status}}' 2>/dev/null || echo "x")
+            G=$(docker inspect api-gateway     --format='{{.State.Health.Status}}' 2>/dev/null || echo "x")
+            echo "  auth=$A | product=$P | order=$O | gateway=$G (${ELAPSED}s)"
+            [ "$A" = "healthy" ] && [ "$P" = "healthy" ] && [ "$O" = "healthy" ] && [ "$G" = "healthy" ] && break
             sleep 5; ELAPSED=$((ELAPSED+5))
           done
-          [ $ELAPSED -ge $TIMEOUT ] && { docker compose logs auth product; exit 1; }
+          [ $ELAPSED -ge $TIMEOUT ] && { docker compose logs auth product order gateway rabbitmq; exit 1; }
           echo "All services healthy"
 
       - name: Run smoke tests
@@ -123,6 +134,7 @@ jobs:
           NGINX="http://localhost"
           AUTH="http://localhost:3001"
           PRODUCT="http://localhost:3002"
+          ORDER="http://localhost:3003"
           FAIL=false
 
           check() {
@@ -139,17 +151,21 @@ jobs:
           check "gateway /health"           "$BASE/api/health"             "200"
           check "auth route"                "$AUTH/health"    "200"
           check "product route"             "$PRODUCT/health" "200"
+          check "order route"               "$ORDER/health"   "200"
 
           echo "── Nginx :80 ──────────────────────────────"
           check "nginx → gateway → auth"    "$NGINX/api/auth/health"            "200"
           check "nginx → gateway → product" "$NGINX/api/products/health"            "200"
+          check "nginx → gateway → order"   "$NGINX/api/order/health"           "200"
           check "nginx → frontend"          "$NGINX/"                  "200"
 
           echo "── Internal (docker exec) ─────────────────"
           A=$(docker exec auth-service    curl -sf -o /dev/null -w "%{http_code}" http://localhost:3001/health || echo "000")
           P=$(docker exec product-service curl -sf -o /dev/null -w "%{http_code}" http://localhost:3002/health || echo "000")
+          O=$(docker exec order-service   curl -sf -o /dev/null -w "%{http_code}" http://localhost:3003/health || echo "000")
           [ "$A" = "200" ] && echo "  PASS  auth internal → $A"    || { echo "  FAIL  auth internal → $A";    FAIL=true; }
           [ "$P" = "200" ] && echo "  PASS  product internal → $P" || { echo "  FAIL  product internal → $P"; FAIL=true; }
+          [ "$O" = "200" ] && echo "  PASS  order internal → $O"   || { echo "  FAIL  order internal → $O";   FAIL=true; }
 
           [ "$FAIL" = "true" ] && exit 1
           echo ""
@@ -161,7 +177,7 @@ jobs:
           echo "## Smoke test — ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "| container | status | health |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          for C in auth-service product-service api-gateway frontend-ui nginx-proxy mongodb redis-1 redis-2 redis-3; do
+          for C in auth-service product-service order-service api-gateway frontend-ui nginx-proxy mongodb rabbitmq redis-1 redis-2 redis-3; do
             ST=$(docker inspect $C --format='{{.State.Status}}'              2>/dev/null || echo "—")
             HL=$(docker inspect $C --format='{{.State.Health.Status}}'       2>/dev/null || echo "—")
             IC=$([ "$ST" = "running" ] && echo "✅" || echo "❌")
@@ -171,7 +187,7 @@ jobs:
       - name: Print logs on failure
         if: failure()
         run: |
-          for SVC in auth product gateway; do
+          for SVC in auth product order gateway rabbitmq; do
             echo "=== $SVC ===" && docker compose logs --tail=60 $SVC
           done
 
@@ -192,15 +208,23 @@ jobs:
       matrix:
         service:
           - name: auth
-            context: ./backend-auth
+            context: ./services/backend-auth
+            dockerfile: ./services/backend-auth/dockerfile
           - name: product
-            context: ./backend-product
+            context: ./services/backend-product
+            dockerfile: ./services/backend-product/dockerfile
+          - name: order
+            context: ./services/backend-order
+            dockerfile: ./services/backend-order/dockerfile
           - name: gateway
-            context: ./gateway
+            context: ./apps/gateway
+            dockerfile: ./apps/gateway/Dockerfile
           - name: frontend
-            context: ./frontend/client
+            context: ./apps/frontend
+            dockerfile: ./apps/frontend/Dockerfile
           - name: nginx
-            context: ./nginx
+            context: ./deploy/nginx
+            dockerfile: ./deploy/nginx/Dockerfile
 
     steps:
       - uses: actions/checkout@v4
@@ -227,6 +251,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
