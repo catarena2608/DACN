@@ -85,15 +85,34 @@ jobs:
       - name: Start mongo + redis nodes
         run: |
           docker compose up -d mongo rabbitmq redis-1 redis-2 redis-3
+
+          wait_for_container_health() {
+            CONTAINER="$1"
+            LABEL="$2"
+            TIMEOUT="${3:-180}"
+            ELAPSED=0
+
+            echo "Waiting for ${LABEL}..."
+            until [ "$ELAPSED" -ge "$TIMEOUT" ]; do
+              STATUS=$(docker inspect "$CONTAINER" --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
+              echo "  ${LABEL} health=${STATUS} (${ELAPSED}s)"
+              [ "$STATUS" = "healthy" ] && return 0
+              sleep 5
+              ELAPSED=$((ELAPSED+5))
+            done
+
+            echo "${LABEL} did not become healthy within ${TIMEOUT}s"
+            docker compose logs --tail=120 "$CONTAINER" || true
+            return 1
+          }
+
           echo "Waiting for MongoDB..."
           timeout 60 bash -c \
             'until docker compose exec -T mongo mongosh --eval "db.adminCommand(\"ping\")" --quiet 2>/dev/null; \
              do sleep 3; done'
           echo "MongoDB ready"
-          echo "Waiting for RabbitMQ..."
-          timeout 60 bash -c \
-            'until docker compose exec -T rabbitmq rabbitmq-diagnostics -q ping 2>/dev/null; \
-             do sleep 3; done'
+
+          wait_for_container_health rabbitmq RabbitMQ 180
           echo "RabbitMQ ready"
 
       - name: Init Redis cluster
