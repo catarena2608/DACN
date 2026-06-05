@@ -8,7 +8,7 @@ services:
     replicaCount: 1
     env:
       URI: mongodb://mongodb:27017/auth_db
-      REDIS_NODES: redis-cluster:6379
+      REDIS_URL: redis://redis-cluster:6379
       JWT_SECRET: dev-access-token-secret
       JWT_REFRESH_SECRET: dev-refresh-token-secret
 
@@ -16,20 +16,20 @@ services:
     replicaCount: 1
     env:
       URI: mongodb://mongodb:27017/product_db
-      REDIS_NODES: redis-cluster:6379
+      REDIS_URL: redis://redis-cluster:6379
       RABBITMQ_URL: amqp://rabbitmq:5672
 
   order:
     replicaCount: 1
     env:
       URI: mongodb://mongodb:27017/order_db
-      REDIS_NODES: redis-cluster:6379
+      REDIS_URL: redis://redis-cluster:6379
       RABBITMQ_URL: amqp://rabbitmq:5672
 
   gateway:
     replicaCount: 1
     env:
-      MyJWT_SECRET: dev-access-token-secret
+      JWT_SECRET: dev-access-token-secret
       ORDER_SERVICE_URL: http://order:3003
 
 ingress:

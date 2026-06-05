@@ -178,7 +178,7 @@ kubectl -n dacn-staging create secret generic dacn-order-staging-secrets \
   --from-literal=RABBITMQ_URL='amqp://user:password@rabbitmq-host:5672'
 
 kubectl -n dacn-staging create secret generic dacn-gateway-staging-secrets \
-  --from-literal=MyJWT_SECRET='same-as-auth-jwt-secret'
+  --from-literal=JWT_SECRET='same-as-auth-jwt-secret'
 ```
 
 Production dùng secret riêng:

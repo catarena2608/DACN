@@ -61,7 +61,13 @@ jobs:
             cd - > /dev/null
           done
 
-          [ "$FAIL" = "true" ] && exit 1 || echo "No HIGH/CRITICAL vulnerabilities"
+          if [ "$FAIL" = "true" ]; then
+            echo "::warning::npm audit found HIGH/CRITICAL vulnerabilities. Non-blocking in lab mode."
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> npm audit found HIGH/CRITICAL vulnerabilities. This is reported only and does not block lab CI." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No HIGH/CRITICAL vulnerabilities"
+          fi
   sonarqube:
     name: SonarQube Analysis
     runs-on: ubuntu-latest

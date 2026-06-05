@@ -55,14 +55,16 @@ frontend
 gateway
 auth service
 product service
+order service
 nginx local proxy
+RabbitMQ trong Docker Compose/Helm
 docker compose
 helm chart
 github actions ci
 k6 staging script
 ```
 
-Các service còn lại như Order, Payment, Ranking, Admin và RabbitMQ nên được xem là phase mở rộng, không nên trình bày như phần đã hoàn thiện.
+Các service còn lại như Payment, Ranking và Admin nên được xem là phase mở rộng, không nên trình bày như phần đã hoàn thiện.
 
 ## Tech Stack Đề Xuất
 
