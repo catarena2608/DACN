@@ -1,0 +1,41 @@
+{{- if .Values.infrastructure.rabbitmq.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: {{ .Values.infrastructure.rabbitmq.image }}
+          ports:
+            - name: amqp
+              containerPort: {{ .Values.infrastructure.rabbitmq.service.port }}
+            - name: management
+              containerPort: {{ .Values.infrastructure.rabbitmq.service.managementPort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  ports:
+    - name: amqp
+      port: {{ .Values.infrastructure.rabbitmq.service.port }}
+      targetPort: amqp
+    - name: management
+      port: {{ .Values.infrastructure.rabbitmq.service.managementPort }}
+      targetPort: management
+  selector:
+    app: rabbitmq
+{{- end }}

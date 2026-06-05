@@ -1,0 +1,116 @@
+global:
+  environment: production
+  domain: dacn.example.com
+  imageTag: latest
+
+services:
+  auth:
+    replicaCount: 4
+    env:
+      REDIS_NODES: prod-redis-cluster:6379
+    envFromSecrets:
+      - dacn-auth-prod-secrets
+    resources:
+      requests:
+        cpu: 300m
+        memory: 384Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 65
+
+  product:
+    replicaCount: 4
+    env:
+      REDIS_NODES: prod-redis-cluster:6379
+      RABBITMQ_URL: amqp://prod-rabbitmq:5672
+    envFromSecrets:
+      - dacn-product-prod-secrets
+    resources:
+      requests:
+        cpu: 400m
+        memory: 512Mi
+      limits:
+        cpu: "1.5"
+        memory: 1536Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 30
+      targetCPUUtilizationPercentage: 65
+
+  order:
+    replicaCount: 4
+    env:
+      REDIS_NODES: prod-redis-cluster:6379
+      RABBITMQ_URL: amqp://prod-rabbitmq:5672
+    envFromSecrets:
+      - dacn-order-prod-secrets
+    resources:
+      requests:
+        cpu: 400m
+        memory: 512Mi
+      limits:
+        cpu: "1.5"
+        memory: 1536Mi
+    autoscaling:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 30
+      targetCPUUtilizationPercentage: 65
+
+  gateway:
+    replicaCount: 4
+    envFromSecrets:
+      - dacn-gateway-prod-secrets
+    resources:
+      requests:
+        cpu: 300m
+        memory: 384Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 4
+      maxReplicas: 18
+      targetCPUUtilizationPercentage: 65
+
+  frontend:
+    replicaCount: 3
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 70
+
+ingress:
+  annotations:
+    kubernetes.io/ingress.class: nginx
+  tls:
+    - hosts:
+        - dacn.example.com
+      secretName: dacn-prod-tls
+  hosts:
+    - host: dacn.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 80
+        - path: /api
+          pathType: Prefix
+          serviceName: gateway
+          servicePort: 3000
+
+infrastructure:
+  mongodb:
+    enabled: false
+  redis:
+    enabled: false
+  rabbitmq:
+    enabled: false

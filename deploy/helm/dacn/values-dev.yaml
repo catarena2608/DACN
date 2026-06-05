@@ -1,0 +1,54 @@
+global:
+  environment: dev
+  domain: dacn.local
+  imageTag: latest
+
+services:
+  auth:
+    replicaCount: 1
+    env:
+      URI: mongodb://mongodb:27017/auth_db
+      REDIS_NODES: redis-cluster:6379
+      JWT_SECRET: REDACTED
+      JWT_REFRESH_SECRET: REDACTED
+
+  product:
+    replicaCount: 1
+    env:
+      URI: mongodb://mongodb:27017/product_db
+      REDIS_NODES: redis-cluster:6379
+      RABBITMQ_URL: amqp://rabbitmq:5672
+
+  order:
+    replicaCount: 1
+    env:
+      URI: mongodb://mongodb:27017/order_db
+      REDIS_NODES: redis-cluster:6379
+      RABBITMQ_URL: amqp://rabbitmq:5672
+
+  gateway:
+    replicaCount: 1
+    env:
+      MyJWT_SECRET: REDACTED
+      ORDER_SERVICE_URL: http://order:3003
+
+ingress:
+  hosts:
+    - host: dacn.local
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: frontend
+          servicePort: 80
+        - path: /api
+          pathType: Prefix
+          serviceName: gateway
+          servicePort: 3000
+
+infrastructure:
+  mongodb:
+    enabled: true
+  redis:
+    enabled: true
+  rabbitmq:
+    enabled: true
