@@ -25,7 +25,6 @@ app.use("/health", healthRoutes);
 app.use("/", authRoutes);
 
 // ================== MONGOOSE CONNECT ==================
-console.log("URI:", process.env.URI);
 const MONGO_URI = process.env.URI;
 
 async function connectDB() {

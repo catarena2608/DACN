@@ -6,8 +6,6 @@ RUN npm install
 
 COPY . .
 
-RUN ls -R src/components
-
 RUN npm run build
 
 FROM nginx:alpine AS run

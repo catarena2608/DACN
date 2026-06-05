@@ -4,7 +4,7 @@
   const cors = require("cors");
   const cookieParser = require("cookie-parser");
   const jwt = require("jsonwebtoken");
-  const rateLimiter =require("./middleware/rateLimiter");
+  const rateLimiter = require("./middleware/rateLimiter");
 
   const app = express();
 
@@ -42,7 +42,7 @@
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.MyJWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = decoded; // Lưu payload để gửi tiếp sang service
       next();
     } catch (err) {
@@ -90,7 +90,7 @@
 
     // ⚡ Nếu đã decode JWT, gắn info user vào header
     if (req.user) {
-      headers["x-user-id"] = req.user.id || req.user._id;
+      headers["x-user-id"] = req.user.userId || req.user.id || req.user._id;
       headers["x-user-email"] = req.user.email;
     }
 

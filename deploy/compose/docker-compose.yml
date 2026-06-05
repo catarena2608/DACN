@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   auth:
     build:
@@ -7,12 +5,16 @@ services:
       dockerfile: dockerfile
     container_name: auth-service
     env_file:
-      - ../../services/backend-auth/.env.dev
+      - path: ../../services/backend-auth/.env.example
+      - path: ../../services/backend-auth/.env.dev
+        required: false
     ports:
       - "3001:3001"
     depends_on:
-      - mongo
-      - redis-cluster-init
+      mongo:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 10s
@@ -28,13 +30,18 @@ services:
       dockerfile: dockerfile
     container_name: product-service
     env_file:
-      - ../../services/backend-product/.env.dev
+      - path: ../../services/backend-product/.env.example
+      - path: ../../services/backend-product/.env.dev
+        required: false
     ports:
       - "3002:3002"
     depends_on:
-      - mongo
-      - redis-cluster-init
-      - rabbitmq
+      mongo:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 10s
@@ -50,14 +57,20 @@ services:
       dockerfile: dockerfile
     container_name: order-service
     env_file:
-      - ../../services/backend-order/.env.dev
+      - path: ../../services/backend-order/.env.example
+      - path: ../../services/backend-order/.env.dev
+        required: false
     ports:
       - "3003:3003"
     depends_on:
-      - mongo
-      - redis-cluster-init
-      - rabbitmq
-      - product
+      mongo:
+        condition: service_healthy
+      redis-cluster-init:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      product:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
       interval: 10s
@@ -83,13 +96,18 @@ services:
     build: ../../apps/gateway
     container_name: api-gateway
     env_file:
-      - ../../apps/gateway/.env.dev
+      - path: ../../apps/gateway/.env.example
+      - path: ../../apps/gateway/.env.dev
+        required: false
     ports:
       - "3000:3000"
     depends_on:
-      - auth
-      - product
-      - order
+      auth:
+        condition: service_healthy
+      product:
+        condition: service_healthy
+      order:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 10s
@@ -105,8 +123,10 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - gateway
-      - frontend
+      gateway:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/api/auth/health"]
       interval: 10s

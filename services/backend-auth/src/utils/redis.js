@@ -1,23 +1,38 @@
 const Redis = require("ioredis");
 
-const nodesString = process.env.REDIS_NODES || "";
+const commonOptions = {
+  connectTimeout: 10000,
+};
 
-const nodes = nodesString.split(",").map(node => {
+function createRedisClient() {
+  if (process.env.REDIS_URL) {
+    return new Redis(process.env.REDIS_URL, commonOptions);
+  }
+
+  const nodesString = process.env.REDIS_NODES;
+  if (!nodesString) {
+    throw new Error("REDIS_URL or REDIS_NODES is required");
+  }
+
+  const nodes = nodesString.split(",").map((node) => {
     const [host, port] = node.split(":");
-    return { host, port: parseInt(port) };
-});
+    return { host, port: Number.parseInt(port, 10) };
+  });
 
-const redis = new Redis.Cluster(nodes, {
-  redisOptions: { 
-    connectTimeout: 10000,
-    enableReadyCheck: true 
-  },
-  dnsLookup: (address, callback) => callback(null, address),
-  scaleReads: "master", 
-  clusterRetryStrategy: (times) => Math.min(times * 100, 3000),
-});
+  return new Redis.Cluster(nodes, {
+    redisOptions: {
+      ...commonOptions,
+      enableReadyCheck: true,
+    },
+    dnsLookup: (address, callback) => callback(null, address),
+    scaleReads: "master",
+    clusterRetryStrategy: (times) => Math.min(times * 100, 3000),
+  });
+}
 
-redis.on("connect", () => console.log("✅ Redis connected"));
-redis.on("error", (err) => console.error("❌ Redis error:", err.message));
+const redis = createRedisClient();
+
+redis.on("connect", () => console.log("Redis connected"));
+redis.on("error", (err) => console.error("Redis error:", err.message));
 
 module.exports = redis;

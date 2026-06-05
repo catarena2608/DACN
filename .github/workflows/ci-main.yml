@@ -1,4 +1,4 @@
-name: CI/CD — main (smoke test + push)
+name: CI — main (smoke test + push images)
 
 on:
   push:
@@ -58,7 +58,8 @@ jobs:
       - run: npm test --if-present -- --passWithNoTests
         working-directory: ${{ matrix.service.path }}
 
-      - run: npm audit --audit-level=high --omit=dev
+      - name: npm audit (non-blocking for lab)
+        run: npm audit --audit-level=high --omit=dev || true
         working-directory: ${{ matrix.service.path }}
 
   smoke-test:

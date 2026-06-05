@@ -21,12 +21,11 @@ app.use("/health", healthRoutes);
 app.use("/", orderRoutes);
 
 // ================== MONGOOSE CONNECT ==================
-console.log("URI:", process.env.URI);
 const MONGO_URI = process.env.URI;
 
 async function connectDB() {
   await mongoose.connect(MONGO_URI);
-  console.log("🔌 MongoDB connected");
+  console.log("MongoDB connected");
 }
 
 // ================== INIT ==================
