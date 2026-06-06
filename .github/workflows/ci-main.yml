@@ -129,6 +129,10 @@ jobs:
           [ $ELAPSED -ge $TIMEOUT ] && { docker compose logs auth product order gateway rabbitmq; exit 1; }
           echo "All services healthy"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Run smoke tests
         run: |
           BASE="http://localhost:3000"
@@ -171,6 +175,33 @@ jobs:
           [ "$FAIL" = "true" ] && exit 1
           echo ""
           echo "All smoke tests passed"
+
+      - name: Run smoke tests (node:test)
+        run: node --test tests/smoke/smoke.test.js
+        env:
+          AUTH_URL:    http://localhost:3001
+          PRODUCT_URL: http://localhost:3002
+          ORDER_URL:   http://localhost:3003
+          GATEWAY_URL: http://localhost:3000
+          NGINX_URL:   http://localhost
+
+      - name: Run contract tests
+        run: node --test tests/contract/contract.test.js
+        env:
+          AUTH_URL:    http://localhost:3001
+          PRODUCT_URL: http://localhost:3002
+          ORDER_URL:   http://localhost:3003
+          GATEWAY_URL: http://localhost:3000
+
+      - name: Run integration tests
+        run: node --test tests/integration/integration.test.js
+        env:
+          AUTH_URL:       http://localhost:3001
+          PRODUCT_URL:    http://localhost:3002
+          ORDER_URL:      http://localhost:3003
+          GATEWAY_URL:    http://localhost:3000
+          SEED_EMAIL:     ${{ secrets.TEST_SEED_EMAIL }}
+          SEED_PASSWORD:  ${{ secrets.TEST_SEED_PASSWORD }}
 
       - name: Write job summary
         if: always()
