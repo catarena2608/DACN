@@ -196,10 +196,12 @@ jobs:
       - name: Run integration tests
         run: node --test tests/integration/integration.test.js
         env:
-          AUTH_URL:    http://localhost:3001
-          PRODUCT_URL: http://localhost:3002
-          ORDER_URL:   http://localhost:3003
-          GATEWAY_URL: http://localhost:3000
+          AUTH_URL:       http://localhost:3001
+          PRODUCT_URL:    http://localhost:3002
+          ORDER_URL:      http://localhost:3003
+          GATEWAY_URL:    http://localhost:3000
+          SEED_EMAIL:     ${{ secrets.TEST_SEED_EMAIL }}
+          SEED_PASSWORD:  ${{ secrets.TEST_SEED_PASSWORD }}
 
       - name: Write job summary
         if: always()

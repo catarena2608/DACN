@@ -16,7 +16,7 @@
  *   AUTH_URL      default http://localhost:3001  (dùng để verify state)
  *   PRODUCT_URL   default http://localhost:3002  (bypass gateway cho setup)
  *
- * Seed user: nguyenhoa01@gmail.com / hoa123456
+ * Seed user: được truyền qua biến môi trường SEED_EMAIL / SEED_PASSWORD
  */
 
 const { test, describe, before, after } = require("node:test");
@@ -26,10 +26,14 @@ const GATEWAY = process.env.GATEWAY_URL  || "http://localhost:3000";
 const AUTH    = process.env.AUTH_URL     || "http://localhost:3001";
 const PRODUCT = process.env.PRODUCT_URL  || "http://localhost:3002";
 
-const SEED_EMAIL    = "nguyenhoa01@gmail.com";
-const SEED_PASSWORD = "hoa123456";
+const SEED_EMAIL    = process.env.SEED_EMAIL;
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
 
-// ─── helpers ───────────────────────────────────────────────────────────────
+if (!SEED_EMAIL || !SEED_PASSWORD) {
+  throw new Error("Thiếu biến môi trường SEED_EMAIL hoặc SEED_PASSWORD");
+}
+
+const TEST_PASSWORD = process.env.TEST_PASSWORD || "ci-test-pass-integration";
 async function request(url, options = {}) {
   const res = await fetch(url, {
     ...options,
@@ -66,7 +70,7 @@ describe("Integration: Auth flow", () => {
       body: JSON.stringify({
         email: testEmail,
         name: "CI Test User",
-        password: "citest123",
+        password: TEST_PASSWORD,
       }),
     });
     assert.equal(status, 201, `Register thất bại: ${JSON.stringify(body)}`);
@@ -79,7 +83,7 @@ describe("Integration: Auth flow", () => {
       body: JSON.stringify({
         email: testEmail,
         name: "Duplicate",
-        password: "citest123",
+        password: TEST_PASSWORD,
       }),
     });
     assert.equal(status, 400);
@@ -89,7 +93,7 @@ describe("Integration: Auth flow", () => {
   test("login với user vừa tạo → accessToken + refreshToken cookie", async () => {
     const { status, body, setCookie } = await request(`${AUTH}/login`, {
       method: "POST",
-      body: JSON.stringify({ email: testEmail, password: "citest123" }),
+      body: JSON.stringify({ email: testEmail, password: TEST_PASSWORD }),
     });
 
     assert.equal(status, 200, `Login thất bại: ${JSON.stringify(body)}`);
