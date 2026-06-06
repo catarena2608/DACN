@@ -85,34 +85,15 @@ jobs:
       - name: Start mongo + redis nodes
         run: |
           docker compose up -d mongo rabbitmq redis-1 redis-2 redis-3
-
-          wait_for_container_health() {
-            CONTAINER="$1"
-            LABEL="$2"
-            TIMEOUT="${3:-180}"
-            ELAPSED=0
-
-            echo "Waiting for ${LABEL}..."
-            until [ "$ELAPSED" -ge "$TIMEOUT" ]; do
-              STATUS=$(docker inspect "$CONTAINER" --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
-              echo "  ${LABEL} health=${STATUS} (${ELAPSED}s)"
-              [ "$STATUS" = "healthy" ] && return 0
-              sleep 5
-              ELAPSED=$((ELAPSED+5))
-            done
-
-            echo "${LABEL} did not become healthy within ${TIMEOUT}s"
-            docker compose logs --tail=120 "$CONTAINER" || true
-            return 1
-          }
-
           echo "Waiting for MongoDB..."
           timeout 60 bash -c \
             'until docker compose exec -T mongo mongosh --eval "db.adminCommand(\"ping\")" --quiet 2>/dev/null; \
              do sleep 3; done'
           echo "MongoDB ready"
-
-          wait_for_container_health rabbitmq RabbitMQ 180
+          echo "Waiting for RabbitMQ..."
+          timeout 60 bash -c \
+            'until docker compose exec -T rabbitmq rabbitmq-diagnostics -q ping 2>/dev/null; \
+             do sleep 3; done'
           echo "RabbitMQ ready"
 
       - name: Init Redis cluster
@@ -147,6 +128,10 @@ jobs:
           done
           [ $ELAPSED -ge $TIMEOUT ] && { docker compose logs auth product order gateway rabbitmq; exit 1; }
           echo "All services healthy"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: Run smoke tests
         run: |
@@ -190,6 +175,31 @@ jobs:
           [ "$FAIL" = "true" ] && exit 1
           echo ""
           echo "All smoke tests passed"
+
+      - name: Run smoke tests (node:test)
+        run: node --test tests/smoke/smoke.test.js
+        env:
+          AUTH_URL:    http://localhost:3001
+          PRODUCT_URL: http://localhost:3002
+          ORDER_URL:   http://localhost:3003
+          GATEWAY_URL: http://localhost:3000
+          NGINX_URL:   http://localhost
+
+      - name: Run contract tests
+        run: node --test tests/contract/contract.test.js
+        env:
+          AUTH_URL:    http://localhost:3001
+          PRODUCT_URL: http://localhost:3002
+          ORDER_URL:   http://localhost:3003
+          GATEWAY_URL: http://localhost:3000
+
+      - name: Run integration tests
+        run: node --test tests/integration/integration.test.js
+        env:
+          AUTH_URL:    http://localhost:3001
+          PRODUCT_URL: http://localhost:3002
+          ORDER_URL:   http://localhost:3003
+          GATEWAY_URL: http://localhost:3000
 
       - name: Write job summary
         if: always()
