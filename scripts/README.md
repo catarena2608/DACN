@@ -10,3 +10,11 @@ test runners
 report generators
 release utilities
 ```
+
+## Current scripts
+
+```text
+update-gitops-staging.sh
+```
+
+`update-gitops-staging.sh` is used by `.github/workflows/ci-main.yml` after image push. It updates `apps/dacn/staging/helmrelease.yaml` in the checked-out `dacn-gitops` repository so FluxCD can deploy the new immutable image tag to staging.
