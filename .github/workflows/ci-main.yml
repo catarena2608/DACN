@@ -82,18 +82,49 @@ jobs:
       - name: Build all images (cached)
         run: docker compose build --parallel
 
+      - name: Pull runtime images
+        run: |
+          docker pull mongo:latest
+          docker pull redis:latest
+          docker pull rabbitmq:3-management-alpine
+
       - name: Start mongo + redis nodes
+        env:
+          COMPOSE_PARALLEL_LIMIT: 1
         run: |
           docker compose up -d mongo rabbitmq redis-1 redis-2 redis-3
+          docker compose ps
+
+          wait_for_container_health() {
+            CONTAINER="$1"
+            LABEL="$2"
+            TIMEOUT="${3:-180}"
+            ELAPSED=0
+
+            echo "Waiting for ${LABEL}..."
+            until [ "$ELAPSED" -ge "$TIMEOUT" ]; do
+              STATUS=$(timeout 10s docker inspect "$CONTAINER" --format='{{.State.Health.Status}}' 2>/dev/null || echo "inspect-timeout")
+              echo "  ${LABEL} health=${STATUS} (${ELAPSED}s)"
+              [ "$STATUS" = "healthy" ] && return 0
+              sleep 5
+              ELAPSED=$((ELAPSED+5))
+            done
+
+            echo "${LABEL} did not become healthy within ${TIMEOUT}s"
+            docker compose ps || true
+            timeout 10s docker inspect "$CONTAINER" || true
+            docker compose logs --tail=160 "$CONTAINER" || true
+            return 1
+          }
+
           echo "Waiting for MongoDB..."
           timeout 60 bash -c \
             'until docker compose exec -T mongo mongosh --eval "db.adminCommand(\"ping\")" --quiet 2>/dev/null; \
              do sleep 3; done'
           echo "MongoDB ready"
-          echo "Waiting for RabbitMQ..."
-          timeout 60 bash -c \
-            'until docker compose exec -T rabbitmq rabbitmq-diagnostics -q ping 2>/dev/null; \
-             do sleep 3; done'
+
+          wait_for_container_health rabbitmq RabbitMQ 180
+          docker compose exec -T rabbitmq rabbitmq-diagnostics -q ping
           echo "RabbitMQ ready"
 
       - name: Init Redis cluster
@@ -296,3 +327,57 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+  update-gitops-staging:
+    name: Update GitOps staging
+    runs-on: ubuntu-latest
+    needs: push-images
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Compute immutable image tag
+        run: echo "IMAGE_TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Check GitOps token
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          if [ -z "$GITOPS_TOKEN" ]; then
+            echo "::error::Missing GITOPS_TOKEN. Create a fine-grained PAT that can write to dacn-gitops."
+            exit 1
+          fi
+
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.GITOPS_REPOSITORY || format('{0}/dacn-gitops', github.repository_owner) }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+
+      - name: Update staging image tag
+        run: bash scripts/update-gitops-staging.sh gitops "$IMAGE_TAG"
+
+      - name: Commit and push GitOps change
+        working-directory: gitops
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/dacn/staging/helmrelease.yaml
+
+          if git diff --cached --quiet; then
+            echo "GitOps staging already uses $IMAGE_TAG"
+            exit 0
+          fi
+
+          git commit -m "chore: deploy $IMAGE_TAG to staging"
+          git push
+
+      - name: Summary
+        run: |
+          echo "### GitOps staging update" >> "$GITHUB_STEP_SUMMARY"
+          echo "Updated staging imageTag to \`$IMAGE_TAG\`." >> "$GITHUB_STEP_SUMMARY"
