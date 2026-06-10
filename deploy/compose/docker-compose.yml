@@ -182,8 +182,14 @@ services:
       - redis-2
       - redis-3
     command: >
-      sh -c "sleep 5 && 
-      redis-cli --cluster create redis-1:6379 redis-2:6379 redis-3:6379 --cluster-replicas 0 --cluster-yes"
+      sh -c "
+      sleep 5 &&
+      if redis-cli -h redis-1 -p 6379 cluster info 2>/dev/null | grep -q 'cluster_state:ok'; then
+        echo 'Redis cluster already initialized';
+        exit 0;
+      fi &&
+      redis-cli --cluster create redis-1:6379 redis-2:6379 redis-3:6379 --cluster-replicas 0 --cluster-yes
+      "
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
