@@ -5,6 +5,26 @@ const { callProduct } = require("../utils/product.rpc");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+async function findCacheKeys(pattern) {
+  if (typeof redis.nodes === "function") {
+    const masters = redis.nodes("master");
+    const keyGroups = await Promise.all(masters.map((node) => node.keys(pattern)));
+    return [...new Set(keyGroups.flat())];
+  }
+
+  return redis.keys(pattern);
+}
+
+async function deleteCacheKeys(keys) {
+  if (!keys.length) return;
+  await Promise.all(keys.map((key) => redis.del(key)));
+}
+
+async function clearOrderListCache() {
+  const keys = await findCacheKeys("orders:*");
+  await deleteCacheKeys(keys);
+}
+
 // ================== GET ==================
 
 exports.getOrder = async (query) => {
@@ -156,11 +176,7 @@ exports.addOrder = async ({
       address,
     });
 
-    const keys = await redis.keys("orders:*");
-
-    if (keys.length) {
-      await redis.del(...keys);
-    }
+    await clearOrderListCache();
 
     return order;
 
@@ -219,11 +235,7 @@ exports.deleteOrder = async (orderID) => {
 
     await redis.del(`order:${orderID}`);
 
-    const keys = await redis.keys("orders:*");
-
-    if (keys.length) {
-      await redis.del(...keys);
-    }
+    await clearOrderListCache();
 
     return {
       success: true,

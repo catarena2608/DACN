@@ -23,8 +23,9 @@
   app.use("/api/health", healthRoutes);
   // ================== JWT MIDDLEWARE ==================
   app.use(async (req, res, next) => {
-    // ❌ Bỏ qua kiểm tra JWT cho các request Auth
+    // ❌ Bỏ qua kiểm tra JWT cho Auth, health check và gateway root
     if (
+      req.path === "/" ||
       req.originalUrl.startsWith("/api/auth") || 
       req.originalUrl.endsWith("/health") ||
       req.originalUrl === "/health"
