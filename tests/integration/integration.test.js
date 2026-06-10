@@ -16,7 +16,7 @@
  *   AUTH_URL      default http://localhost:3001  (dùng để verify state)
  *   PRODUCT_URL   default http://localhost:3002  (bypass gateway cho setup)
  *
- * Seed user: được truyền qua biến môi trường SEED_EMAIL / SEED_PASSWORD
+ * Seed user: mặc định lấy từ auth.json, có thể override qua SEED_EMAIL / SEED_PASSWORD
  */
 
 const { test, describe, before, after } = require("node:test");
@@ -26,12 +26,8 @@ const GATEWAY = process.env.GATEWAY_URL  || "http://localhost:3000";
 const AUTH    = process.env.AUTH_URL     || "http://localhost:3001";
 const PRODUCT = process.env.PRODUCT_URL  || "http://localhost:3002";
 
-const SEED_EMAIL    = process.env.SEED_EMAIL;
-const SEED_PASSWORD = process.env.SEED_PASSWORD;
-
-if (!SEED_EMAIL || !SEED_PASSWORD) {
-  throw new Error("Thiếu biến môi trường SEED_EMAIL hoặc SEED_PASSWORD");
-}
+const SEED_EMAIL    = process.env.SEED_EMAIL    || "nguyenhoa01@gmail.com";
+const SEED_PASSWORD = process.env.SEED_PASSWORD || "hoa123456";
 
 const TEST_PASSWORD = process.env.TEST_PASSWORD || "ci-test-pass-integration";
 async function request(url, options = {}) {
