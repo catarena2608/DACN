@@ -4,6 +4,26 @@ const redis = require("../utils/redis");
 const {acquireLock,releaseLock,} = require("../utils/lock");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+async function findCacheKeys(pattern) {
+  if (typeof redis.nodes === "function") {
+    const masters = redis.nodes("master");
+    const keyGroups = await Promise.all(masters.map((node) => node.keys(pattern)));
+    return [...new Set(keyGroups.flat())];
+  }
+
+  return redis.keys(pattern);
+}
+
+async function deleteCacheKeys(keys) {
+  if (!keys.length) return;
+  await Promise.all(keys.map((key) => redis.del(key)));
+}
+
+async function clearProductListCache() {
+  const keys = await findCacheKeys("products:*");
+  await deleteCacheKeys(keys);
+}
+
 // ================== GET ==================
 exports.getProducts = async (query) => {
   const key = `products:${JSON.stringify(query)}`;
@@ -137,8 +157,7 @@ exports.createProduct = async (data) => {
   });
 
   // ❗ clear list cache
-  const keys = await redis.keys("products:*");
-  if (keys.length) await redis.del(keys);
+  await clearProductListCache();
 
   return newProduct;
 };
@@ -151,8 +170,7 @@ exports.updateProduct = async (id, data) => {
   await redis.del(`product:${id}`);
 
   // ❗ Xóa toàn bộ list cache
-  const keys = await redis.keys("products:*");
-  if (keys.length) await redis.del(keys);
+  await clearProductListCache();
 
   return updated;
 };
@@ -163,8 +181,7 @@ exports.deleteProduct = async (id) => {
 
   await redis.del(`product:${id}`);
 
-  const keys = await redis.keys("products:*");
-  if (keys.length) await redis.del(keys);
+  await clearProductListCache();
 };
 
 // ================== Lock + RabbitMQ ==================
@@ -199,11 +216,7 @@ exports.reserveStock = async (productID, quantity) => {
 
     await redis.del(`product:${productID}`);
 
-    const keys =await redis.keys("products:*");
-
-    if (keys.length) {
-      await redis.del(...keys);
-    }
+    await clearProductListCache();
 
     return {
       success: true,
@@ -246,11 +259,7 @@ exports.releaseStock = async (productID,quantity) => {
 
     await redis.del(`product:${productID}`);
 
-    const keys =await redis.keys("products:*");
-
-    if (keys.length) {
-      await redis.del(...keys);
-    }
+    await clearProductListCache();
 
     return {
       success: true,
