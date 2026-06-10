@@ -142,7 +142,7 @@ jobs:
           echo "Redis cluster OK (3 nodes)"
 
       - name: Start application services
-        run: docker compose up -d auth product order gateway frontend nginx
+        run: docker compose up -d --no-deps auth product order gateway frontend nginx
 
       - name: Wait for services healthy
         run: |
