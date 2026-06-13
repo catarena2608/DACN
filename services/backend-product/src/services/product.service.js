@@ -29,28 +29,28 @@ exports.getProducts = async (query) => {
   const key = `products:${JSON.stringify(query)}`;
   const lockKey = `lock:${key}`;
 
-  // 🔥 1. Check cache
+  // 1. Check cache.
   const cached = await redis.get(key);
   if (cached) {
     return JSON.parse(cached);
   }
 
-  // 🔒 2. Try acquire lock
+  // 2. Try to acquire lock.
   const isLocked = await redis.set(lockKey, "1", "NX", "EX", 5);
 
   if (!isLocked) {
-    // 👉 Có thằng khác đang fetch → chờ
+    // Another request is already fetching the data; wait briefly.
     await sleep(100);
 
     const retry = await redis.get(key);
     if (retry) return JSON.parse(retry);
 
-    // fallback nếu vẫn chưa có
+    // Fallback if the cache is still empty.
     throw new Error("Server busy, retry");
   }
 
   try {
-    // ❌ Miss cache → query DB
+    // Cache miss; query the database.
     const {
       category,
       name,
@@ -88,13 +88,13 @@ exports.getProducts = async (query) => {
       totalPages: Math.ceil(total / limit)
     };
 
-    // 🔥 Set cache
+    // Set cache.
     const ttl = 60 + Math.floor(Math.random() * 20);
     await redis.set(key, JSON.stringify(result), "EX", ttl);
 
     return result;
   } finally {
-    // 🔓 Release lock
+    // Release lock.
     await redis.del(lockKey);
   }
 };
@@ -104,13 +104,13 @@ exports.getProductById = async (id) => {
   const key = `product:${id}`;
   const lockKey = `lock:${key}`;
 
-  // 🔥 1. Check cache
+  // 1. Check cache.
   const cached = await redis.get(key);
   if (cached) {
     return JSON.parse(cached);
   }
 
-  // 🔒 2. Try lock
+  // 2. Try to acquire lock.
   const isLocked = await redis.set(lockKey, "1", "NX", "EX", 5);
 
   if (!isLocked) {
@@ -156,7 +156,7 @@ exports.createProduct = async (data) => {
     ...data
   });
 
-  // ❗ clear list cache
+  // Clear list cache.
   await clearProductListCache();
 
   return newProduct;
@@ -166,10 +166,10 @@ exports.createProduct = async (data) => {
 exports.updateProduct = async (id, data) => {
   const updated = await productModel.updateProduct(id, data);
 
-  // ❗ Xóa cache detail
+  // Clear detail cache.
   await redis.del(`product:${id}`);
 
-  // ❗ Xóa toàn bộ list cache
+  // Clear all list cache entries.
   await clearProductListCache();
 
   return updated;

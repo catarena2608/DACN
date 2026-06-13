@@ -10,6 +10,10 @@ on:
       staging_url:
         description: "Public staging base URL, for example https://staging.dacn.example.com"
         required: true
+      staging_host:
+        description: "Optional Host header for ingress, for example staging.dacn.local"
+        required: false
+        default: ""
       run_10k_load_test:
         description: "Run the 10,000-user k6 cloud test against staging"
         required: true
@@ -48,15 +52,20 @@ jobs:
     needs: helm-validate
     env:
       STAGING_URL: ${{ inputs.staging_url }}
+      STAGING_HOST: ${{ inputs.staging_host }}
     steps:
       - name: Check staging health
         run: |
           set -euo pipefail
           BASE="${STAGING_URL%/}"
-          curl -fsS --max-time 10 "$BASE/api/health"
-          curl -fsS --max-time 10 "$BASE/api/auth/health"
-          curl -fsS --max-time 10 "$BASE/api/products/health"
-          curl -fsS --max-time 10 "$BASE/"
+          host_args=()
+          if [[ -n "$STAGING_HOST" ]]; then
+            host_args=(-H "Host: $STAGING_HOST")
+          fi
+          curl -fsS --max-time 10 "${host_args[@]}" "$BASE/api/health"
+          curl -fsS --max-time 10 "${host_args[@]}" "$BASE/api/auth/health"
+          curl -fsS --max-time 10 "${host_args[@]}" "$BASE/api/products/health"
+          curl -fsS --max-time 10 "${host_args[@]}" "$BASE/"
 
   load-test-10k:
     name: Staging 10k load test
@@ -65,6 +74,8 @@ jobs:
     if: ${{ inputs.run_10k_load_test == 'true' }}
     env:
       BASE_URL: ${{ inputs.staging_url }}
+      HOST_HEADER: ${{ inputs.staging_host }}
+      LOAD_PROFILE: "10k"
       AUTH_EMAIL: ${{ secrets.STAGING_TEST_EMAIL }}
       AUTH_PASSWORD: ${{ secrets.STAGING_TEST_PASSWORD }}
       PRODUCT_ID: ${{ vars.STAGING_PRODUCT_ID }}

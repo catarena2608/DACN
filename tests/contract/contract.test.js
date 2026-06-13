@@ -1,17 +1,17 @@
 /**
  * Contract Tests
  *
- * Mục tiêu: xác nhận response shape (field name, type) của từng API
- * khớp với những gì frontend và các service khác mong đợi.
- * Không test logic nghiệp vụ — chỉ test "hình dạng" của JSON.
+ * Goal: verify each API response shape (field names and types)
+ * against what the frontend and other services expect.
+ * This does not test business logic; it only tests the JSON shape.
  *
- * Biến môi trường:
+ * Environment variables:
  *   AUTH_URL      default http://localhost:3001
  *   PRODUCT_URL   default http://localhost:3002
  *   ORDER_URL     default http://localhost:3003
  *   GATEWAY_URL   default http://localhost:3000
  *
- * Seed user (từ auth.json):
+ * Seed user (from auth.json):
  *   email: nguyenhoa01@gmail.com / password: hoa123456
  */
 
@@ -23,8 +23,8 @@ const PRODUCT = process.env.PRODUCT_URL  || "http://localhost:3002";
 const ORDER   = process.env.ORDER_URL    || "http://localhost:3003";
 const GATEWAY = process.env.GATEWAY_URL  || "http://localhost:3000";
 
-const SEED_EMAIL    = "nguyenhoa01@gmail.com";
-const SEED_PASSWORD = "hoa123456";
+const SEED_EMAIL    = process.env.SEED_EMAIL    || "nguyenhoa01@gmail.com";
+const SEED_PASSWORD = process.env.SEED_PASSWORD || "hoa123456";
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 async function request(url, options = {}) {
@@ -42,19 +42,19 @@ async function request(url, options = {}) {
 }
 
 function assertString(val, field) {
-  assert.equal(typeof val, "string", `${field} phải là string, nhận ${typeof val}`);
+  assert.equal(typeof val, "string", `${field} must be a string, received ${typeof val}`);
 }
 function assertNumber(val, field) {
-  assert.equal(typeof val, "number", `${field} phải là number, nhận ${typeof val}`);
+  assert.equal(typeof val, "number", `${field} must be a number, received ${typeof val}`);
 }
 function assertArray(val, field) {
-  assert.ok(Array.isArray(val), `${field} phải là array`);
+  assert.ok(Array.isArray(val), `${field} must be an array`);
 }
 function assertObject(val, field) {
-  assert.ok(val && typeof val === "object" && !Array.isArray(val), `${field} phải là object`);
+  assert.ok(val && typeof val === "object" && !Array.isArray(val), `${field} must be an object`);
 }
 
-// ─── State dùng chung giữa các test ────────────────────────────────────────
+// ─── Shared test state ─────────────────────────────────────────────────────
 let accessToken = null;
 let createdProductId = null;
 
@@ -62,7 +62,7 @@ let createdProductId = null;
 describe("Contract: Auth", () => {
   // ── POST /login ──
   describe("POST /login", () => {
-    test("response có accessToken (string) và set cookie refreshToken", async () => {
+    test("response has accessToken (string) and sets refreshToken cookie", async () => {
       const { status, body, headers } = await request(`${AUTH}/login`, {
         method: "POST",
         body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
@@ -70,28 +70,28 @@ describe("Contract: Auth", () => {
 
       assert.equal(status, 200);
       assertObject(body, "body");
-      assert.ok("accessToken" in body,          "thiếu field accessToken");
+      assert.ok("accessToken" in body,          "missing accessToken field");
       assertString(body.accessToken, "accessToken");
-      assert.ok(body.accessToken.split(".").length === 3, "accessToken phải là JWT (3 phần)");
+      assert.ok(body.accessToken.split(".").length === 3, "accessToken must be a JWT with 3 parts");
 
       const cookie = headers.get("set-cookie") || "";
-      assert.ok(cookie.includes("refreshToken"), "thiếu cookie refreshToken");
-      assert.ok(cookie.includes("HttpOnly"),      "refreshToken cookie phải HttpOnly");
+      assert.ok(cookie.includes("refreshToken"), "missing refreshToken cookie");
+      assert.ok(cookie.includes("HttpOnly"),      "refreshToken cookie must be HttpOnly");
 
       accessToken = body.accessToken;
     });
 
-    test("login sai password → 401 + có field message", async () => {
+    test("login with wrong password → 401 + message field", async () => {
       const { status, body } = await request(`${AUTH}/login`, {
         method: "POST",
         body: JSON.stringify({ email: SEED_EMAIL, password: "wrongpassword" }),
       });
       assert.equal(status, 401);
-      assert.ok("message" in body, "thiếu field message trong error response");
+      assert.ok("message" in body, "missing message field in error response");
       assertString(body.message, "message");
     });
 
-    test("login email không tồn tại → 401 + có field message", async () => {
+    test("login with nonexistent email → 401 + message field", async () => {
       const { status, body } = await request(`${AUTH}/login`, {
         method: "POST",
         body: JSON.stringify({ email: "ghost@nowhere.com", password: "x" }),
@@ -103,7 +103,7 @@ describe("Contract: Auth", () => {
 
   // ── POST /register ──
   describe("POST /register", () => {
-    test("register email trùng → 400 + có field message", async () => {
+    test("register duplicate email → 400 + message field", async () => {
       const { status, body } = await request(`${AUTH}/register`, {
         method: "POST",
         body: JSON.stringify({
@@ -120,19 +120,19 @@ describe("Contract: Auth", () => {
 
   // ── POST /logout ──
   describe("POST /logout", () => {
-    test("logout không có cookie → 200 (idempotent) + có field message", async () => {
+    test("logout without cookie → 200 (idempotent) + message field", async () => {
       const { status, body } = await request(`${AUTH}/logout`, { method: "POST" });
       assert.equal(status, 200);
-      assert.ok("message" in body, "thiếu field message");
+      assert.ok("message" in body, "missing message field");
     });
   });
 
   // ── POST /refresh ──
   describe("POST /refresh", () => {
-    test("refresh không có cookie → 403 + có field message", async () => {
+    test("refresh without cookie → 403 + message field", async () => {
       const { status, body } = await request(`${AUTH}/refresh`, { method: "POST" });
       assert.equal(status, 403);
-      assert.ok("message" in body, "thiếu field message");
+      assert.ok("message" in body, "missing message field");
     });
   });
 
@@ -145,8 +145,8 @@ describe("Contract: Auth", () => {
       assertString(body.message,   "message");
       assertNumber(body.timestamp, "timestamp");
       assertObject(body.services,  "services");
-      assert.ok("database" in body.services, "thiếu services.database");
-      assert.ok("redis"    in body.services, "thiếu services.redis");
+      assert.ok("database" in body.services, "missing services.database");
+      assert.ok("redis"    in body.services, "missing services.redis");
     });
   });
 });
@@ -164,27 +164,27 @@ describe("Contract: Product", () => {
       assertNumber(body.totalPages,"totalPages");
     });
 
-    test("mỗi product item có các field bắt buộc", async () => {
+    test("each product item has required fields", async () => {
       const { body } = await request(`${PRODUCT}/`);
-      if (body.products.length === 0) return; // skip nếu DB rỗng
+      if (body.products.length === 0) return; // skip if DB is empty
 
       const p = body.products[0];
-      assert.ok("_id"      in p, "thiếu _id");
-      assert.ok("name"     in p, "thiếu name");
-      assert.ok("price"    in p, "thiếu price");
-      assert.ok("stock"    in p, "thiếu stock");
+      assert.ok("_id"      in p, "missing _id");
+      assert.ok("name"     in p, "missing name");
+      assert.ok("price"    in p, "missing price");
+      assert.ok("stock"    in p, "missing stock");
       assertString(p._id, "_id");
       assertNumber(p.price, "price");
       assertNumber(p.stock, "stock");
     });
 
-    test("query ?page=1&limit=5 → trả về đúng limit", async () => {
+    test("query ?page=1&limit=5 → returns the requested limit", async () => {
       const { status, body } = await request(`${PRODUCT}/?page=1&limit=5`);
       assert.equal(status, 200);
-      assert.ok(body.products.length <= 5, "số sản phẩm trả về vượt quá limit=5");
+      assert.ok(body.products.length <= 5, "returned product count exceeds limit=5");
     });
 
-    test("query ?name=xxx → vẫn trả về shape chuẩn (dù không có kết quả)", async () => {
+    test("query ?name=xxx → still returns standard shape even with no result", async () => {
       const { status, body } = await request(`${PRODUCT}/?name=xyzxyzxyz_notexist`);
       assert.equal(status, 200);
       assertArray(body.products, "products");
@@ -194,17 +194,17 @@ describe("Contract: Product", () => {
 
   // ── GET /:id ──
   describe("GET /:id", () => {
-    test("id không tồn tại → 404 + có field message", async () => {
+    test("nonexistent id → 404 + message field", async () => {
       const { status, body } = await request(`${PRODUCT}/notexistid`);
       assert.equal(status, 404);
       assert.ok("message" in body);
       assertString(body.message, "message");
     });
 
-    test("product hợp lệ → shape đầy đủ (thử với id từ list)", async () => {
+    test("valid product → complete shape using id from list", async () => {
       const { body: listBody } = await request(`${PRODUCT}/`);
       if (listBody.products.length === 0) {
-        // Tạo một product để test
+        // Create one product for the test.
         const { body: created } = await request(`${PRODUCT}/`, {
           method: "POST",
           body: JSON.stringify({ name: "Test Product", price: 100, stock: 10, category: ["test"] }),
@@ -216,18 +216,18 @@ describe("Contract: Product", () => {
 
       const { status, body } = await request(`${PRODUCT}/${createdProductId}`);
       assert.equal(status, 200);
-      assert.ok("_id"   in body, "thiếu _id");
-      assert.ok("name"  in body, "thiếu name");
-      assert.ok("price" in body, "thiếu price");
-      assert.ok("stock" in body, "thiếu stock");
-      // description có thể null (từ detail model)
-      assert.ok("description" in body, "thiếu field description (có thể null)");
+      assert.ok("_id"   in body, "missing _id");
+      assert.ok("name"  in body, "missing name");
+      assert.ok("price" in body, "missing price");
+      assert.ok("stock" in body, "missing stock");
+      // description can be null from the detail model.
+      assert.ok("description" in body, "missing description field, which may be null");
     });
   });
 
   // ── POST / ──
   describe("POST / (create product)", () => {
-    test("tạo product mới → 201 + trả về object với _id", async () => {
+    test("create new product → 201 + returns object with _id", async () => {
       const { status, body } = await request(`${PRODUCT}/`, {
         method: "POST",
         body: JSON.stringify({
@@ -240,7 +240,7 @@ describe("Contract: Product", () => {
       });
       assert.equal(status, 201);
       assertObject(body, "body");
-      assert.ok("_id" in body, "thiếu _id trong response tạo mới");
+      assert.ok("_id" in body, "missing _id in create response");
       assertString(body._id, "_id");
 
       // cleanup
@@ -250,8 +250,8 @@ describe("Contract: Product", () => {
 
   // ── PATCH /:id ──
   describe("PATCH /:id (update product)", () => {
-    test("update product → trả về object đã cập nhật (có _id)", async () => {
-      // Tạo product để update
+    test("update product → returns updated object with _id", async () => {
+      // Create a product to update.
       const { body: created } = await request(`${PRODUCT}/`, {
         method: "POST",
         body: JSON.stringify({ name: "To Update", price: 100, stock: 10, category: [] }),
@@ -263,7 +263,7 @@ describe("Contract: Product", () => {
       });
 
       assert.equal(status, 200);
-      assert.ok("_id" in body, "thiếu _id trong update response");
+      assert.ok("_id" in body, "missing _id in update response");
 
       // cleanup
       await request(`${PRODUCT}/${created._id}`, { method: "DELETE" });
@@ -272,7 +272,7 @@ describe("Contract: Product", () => {
 
   // ── DELETE /:id ──
   describe("DELETE /:id", () => {
-    test("xóa product hợp lệ → 200 + có field message", async () => {
+    test("delete valid product → 200 + message field", async () => {
       const { body: created } = await request(`${PRODUCT}/`, {
         method: "POST",
         body: JSON.stringify({ name: "To Delete", price: 10, stock: 1, category: [] }),
@@ -283,14 +283,14 @@ describe("Contract: Product", () => {
       });
 
       assert.equal(status, 200);
-      assert.ok("message" in body, "thiếu field message sau khi xóa");
+      assert.ok("message" in body, "missing message field after delete");
       assertString(body.message, "message");
     });
   });
 
   // ── GET /health ──
   describe("GET /health", () => {
-    test("shape giống auth health", async () => {
+    test("shape matches auth health", async () => {
       const { status, body } = await request(`${PRODUCT}/health`);
       assert.equal(status, 200);
       assertNumber(body.uptime,    "uptime");
@@ -306,44 +306,44 @@ describe("Contract: Product", () => {
 describe("Contract: Order", () => {
   // ── GET / ──
   describe("GET / (order list)", () => {
-    test("trả về array (có thể rỗng)", async () => {
+    test("returns an array, possibly empty", async () => {
       const { status, body } = await request(`${ORDER}/`);
       assert.equal(status, 200);
       assertArray(body, "order list");
     });
 
-    test("query ?userID=xxx → vẫn trả về array", async () => {
+    test("query ?userID=xxx → still returns an array", async () => {
       const { status, body } = await request(`${ORDER}/?userID=fakeuserid`);
       assert.equal(status, 200);
       assertArray(body, "filtered order list");
     });
 
-    test("mỗi order item (nếu có) có các field bắt buộc", async () => {
+    test("each order item, if present, has required fields", async () => {
       const { body } = await request(`${ORDER}/`);
       if (body.length === 0) return;
 
       const o = body[0];
-      assert.ok("_id"      in o, "thiếu _id");
-      assert.ok("userID"   in o, "thiếu userID");
-      assert.ok("products" in o, "thiếu products");
-      assert.ok("total"    in o, "thiếu total");
-      assert.ok("address"  in o, "thiếu address");
+      assert.ok("_id"      in o, "missing _id");
+      assert.ok("userID"   in o, "missing userID");
+      assert.ok("products" in o, "missing products");
+      assert.ok("total"    in o, "missing total");
+      assert.ok("address"  in o, "missing address");
       assertArray(o.products, "order.products");
       assertNumber(o.total,   "order.total");
 
       // orderItem shape
       if (o.products.length > 0) {
         const item = o.products[0];
-        assert.ok("productID" in item, "order item thiếu productID");
-        assert.ok("num"       in item, "order item thiếu num");
-        assert.ok("price"     in item, "order item thiếu price");
+        assert.ok("productID" in item, "order item is missing productID");
+        assert.ok("num"       in item, "order item is missing num");
+        assert.ok("price"     in item, "order item is missing price");
       }
     });
   });
 
   // ── GET /:id ──
   describe("GET /:id", () => {
-    test("id uuid không tồn tại → 404 + có field message", async () => {
+    test("nonexistent UUID id → 404 + message field", async () => {
       const { status, body } = await request(
         `${ORDER}/00000000-0000-0000-0000-000000000000`
       );
@@ -354,17 +354,17 @@ describe("Contract: Order", () => {
 
   // ── POST / ──
   describe("POST / (create order)", () => {
-    test("thiếu products → 400 + có field message", async () => {
+    test("missing products → 400 + message field", async () => {
       const { status, body } = await request(`${ORDER}/`, {
         method: "POST",
         body: JSON.stringify({ userID: "testuser", address: "123 street" }),
       });
-      // service sẽ throw lỗi vì products rỗng hoặc thiếu
-      assert.ok(status === 400 || status === 500, `Expected 400/500 nhưng nhận ${status}`);
-      assert.ok("message" in body, "thiếu field message trong error response");
+      // The service throws because products is empty or missing.
+      assert.ok(status === 400 || status === 500, `Expected 400/500 but received ${status}`);
+      assert.ok("message" in body, "missing message field in error response");
     });
 
-    test("productID không tồn tại → 400 + có field message", async () => {
+    test("nonexistent productID → 400 + message field", async () => {
       const { status, body } = await request(`${ORDER}/`, {
         method: "POST",
         body: JSON.stringify({
@@ -374,26 +374,26 @@ describe("Contract: Order", () => {
         }),
       });
       assert.equal(status, 400);
-      assert.ok("message" in body, "thiếu field message");
+      assert.ok("message" in body, "missing message field");
       assertString(body.message, "message");
     });
   });
 
   // ── DELETE /:id ──
   describe("DELETE /:id", () => {
-    test("id không tồn tại → 400 + có field message", async () => {
+    test("nonexistent id → 400 + message field", async () => {
       const { status, body } = await request(
         `${ORDER}/00000000-0000-0000-0000-000000000000`,
         { method: "DELETE" }
       );
       assert.equal(status, 400);
-      assert.ok("message" in body, "thiếu field message");
+      assert.ok("message" in body, "missing message field");
     });
   });
 
   // ── GET /health ──
   describe("GET /health", () => {
-    test("shape giống các service khác", async () => {
+    test("shape matches the other services", async () => {
       const { status, body } = await request(`${ORDER}/health`);
       assert.equal(status, 200);
       assertNumber(body.uptime,   "uptime");
@@ -416,8 +416,8 @@ describe("Contract: Gateway", () => {
       assertArray(body.dependencies,"dependencies");
 
       for (const dep of body.dependencies) {
-        assert.ok("name"   in dep, "dep thiếu name");
-        assert.ok("status" in dep, "dep thiếu status");
+        assert.ok("name"   in dep, "dep is missing name");
+        assert.ok("status" in dep, "dep is missing status");
         assertString(dep.name,   "dep.name");
         assertString(dep.status, "dep.status");
       }
@@ -425,30 +425,30 @@ describe("Contract: Gateway", () => {
   });
 
   describe("JWT error responses", () => {
-    test("không có token → 401 + field message", async () => {
+    test("without token → 401 + message field", async () => {
       const { status, body } = await request(`${GATEWAY}/api/products`);
       assert.equal(status, 401);
-      assert.ok("message" in body, "thiếu field message");
+      assert.ok("message" in body, "missing message field");
       assertString(body.message, "message");
     });
 
-    test("token sai → 403 + field message", async () => {
+    test("invalid token → 403 + message field", async () => {
       const { status, body } = await request(`${GATEWAY}/api/products`, {
         headers: { Authorization: "Bearer invalid.jwt.token" },
       });
       assert.equal(status, 403);
-      assert.ok("message" in body, "thiếu field message");
+      assert.ok("message" in body, "missing message field");
       assertString(body.message, "message");
     });
 
-    test("route không tồn tại → 404 + field message", async () => {
+    test("nonexistent route → 404 + message field", async () => {
       const { status, body } = await request(`${GATEWAY}/api/unknown-service`, {
         headers: { Authorization: "Bearer fake.jwt.token" },
       });
-      // gateway verify JWT trước → 403, hoặc sau verify → 404
-      // cả hai đều chấp nhận
-      assert.ok([403, 404].includes(status), `Expected 403 hoặc 404, nhận ${status}`);
-      assert.ok("message" in body, "thiếu field message");
+      // The gateway may verify JWT first and return 403, or verify after routing and return 404.
+      // Both are accepted.
+      assert.ok([403, 404].includes(status), `Expected 403 or 404, received ${status}`);
+      assert.ok("message" in body, "missing message field");
     });
   });
 });

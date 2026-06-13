@@ -1,161 +1,171 @@
 # DevOps Production Readiness
 
-Tài liệu này mô tả luận điểm trung tâm của đồ án: khi một hệ thống microservices được đưa lên production, tốc độ phản hồi, độ ổn định và khả năng chịu tải không phải là trách nhiệm riêng của Developer hoặc Operator. Đó là trách nhiệm chung của cả quy trình DevOps.
+This document describes the central argument of the project: when a microservices system is moved toward production, response time, stability, and capacity are not only a Developer responsibility or only an Operator responsibility. They are shared DevOps outcomes.
 
-## Luận Điểm Chính
+## Main Argument
 
-Một ứng dụng chạy tốt trên production không chỉ vì code đúng, cũng không chỉ vì hạ tầng mạnh. Production readiness đến từ sự kết hợp giữa:
+A production-ready system is not produced by correct code alone, and it is not produced by powerful infrastructure alone. Production readiness comes from the combination of:
 
 ```text
-Developer viết code có khả năng chịu tải, dễ quan sát, dễ rollback
-Operator/Platform cung cấp hạ tầng ổn định, autoscaling, secret, ingress, monitoring
-CI kiểm tra chất lượng source code và artifact
-FluxCD triển khai nhất quán theo GitOps
-Staging validation chứng minh artifact đủ an toàn trước production
+Developers writing load-aware, observable, rollback-friendly code
+Operators/platform teams providing stable infrastructure, autoscaling, secrets, ingress, and monitoring
+CI validating source quality and build artifacts
+FluxCD deploying consistently from GitOps state
+Staging validation proving an artifact is safe enough before production
 ```
 
-Vì vậy, câu hỏi của đồ án không chỉ là:
+Therefore, the project does not ask only:
 
 ```text
-Ứng dụng có chạy được không?
+Does the application run?
 ```
 
-Mà là:
+It asks:
 
 ```text
-Ứng dụng có đủ bằng chứng để được phép chạy trước người dùng cuối không?
+Is there enough evidence to allow this artifact to run in front of real users?
 ```
 
-## Trách Nhiệm Của Developer
+## Developer Responsibilities
 
-Developer chịu trách nhiệm tạo ra phần mềm có thể vận hành được:
+Developers are responsible for software that can be operated:
 
 ```text
-API trả lỗi rõ ràng
-health check hoạt động đúng
-không hard-code endpoint/secret
-code đọc config từ environment
-query database có index phù hợp
-cache Redis được dùng đúng chỗ
-không dùng thao tác nguy hiểm ở tải lớn nếu chưa kiểm soát
-log đủ thông tin để debug
-test được các luồng nghiệp vụ chính
+APIs return clear errors
+health checks work correctly
+endpoints and secrets are not hard-coded
+configuration is read from environment variables
+database queries have appropriate indexes
+Redis cache is used in the right paths
+dangerous operations under high load are controlled
+logs contain enough context for debugging
+core business flows are tested
 ```
 
-Ví dụ trong hệ thống này:
+Examples in this system:
 
 ```text
-Auth service phải expose /health
-Product service phải chịu được cache miss/cache hit
-Gateway phải route lỗi rõ ràng
-Frontend phải dùng /api hoặc VITE_API_BASE_URL thay vì hard-code localhost
+Auth service exposes /health
+Product service behaves correctly on cache hit and cache miss
+Gateway routes failures clearly
+Frontend uses /api or VITE_API_BASE_URL instead of hard-coded localhost URLs
 ```
 
-## Trách Nhiệm Của Operator/Platform
+## Operator And Platform Responsibilities
 
-Operator hoặc platform layer chịu trách nhiệm tạo môi trường chạy ổn định:
+The platform layer is responsible for a stable runtime environment:
 
 ```text
-Kubernetes resource requests/limits hợp lý
-HPA scale theo tải
-Ingress và DNS ổn định
-secret production không nằm plaintext trong Git
-FluxCD sync đúng desired state
-rollback có thể thực hiện được
-metrics/logs đủ để quan sát sự cố
-database/cache có sizing phù hợp
+Kubernetes requests and limits are reasonable
+HPA scales under load
+Ingress and DNS are stable
+production secrets are not stored as plaintext in Git
+FluxCD reconciles the expected desired state
+rollback can be performed
+metrics and logs are sufficient for incident analysis
+database/cache sizing fits the expected traffic
 ```
 
-Nếu hạ tầng yếu hoặc cấu hình sai, code tốt vẫn có thể fail khi gặp traffic thật.
+Good code can still fail under real traffic if infrastructure is weak or misconfigured.
 
-## Trách Nhiệm Chung
+## Shared Responsibilities
 
-Những điểm sau không thuộc riêng Dev hay Ops:
+The following are shared system-level outcomes:
 
 ```text
-latency p95/p99
+p95 and p99 latency
 error rate
-khả năng chịu 10.000 virtual users
-khả năng scale khi tải tăng
-thời gian phát hiện lỗi
-khả năng rollback khi bản release xấu
+capacity under 10,000 virtual users
+scaling behavior under increasing load
+time to detect failure
+rollback ability
 production readiness decision
 ```
 
-Đây là các chỉ số chung của toàn hệ thống. Một release chỉ nên được promote khi cả code và môi trường đều đã vượt qua quality gate.
+A release should only be promoted when both code and environment pass the quality gate.
 
-## Quality Gate Trước Production
+## Quality Gate Before Production
 
-Quality gate là bộ điều kiện bắt buộc trước khi một image tag được phép lên production.
-
-Trong đồ án này, gate gồm:
+In this project, the production gate includes:
 
 ```text
-CI build pass
-dependency/security scan pass
-Docker Compose smoke test pass
-Helm render/lint pass
-FluxCD sync staging thành công
-staging health check pass
-k6 10.000 user test pass threshold
-không có pod restart/OOMKilled bất thường
+CI build passes
+dependency/security scan passes
+Docker Compose smoke test passes
+Helm render/lint passes
+FluxCD syncs staging successfully
+staging health checks pass
+k6 10,000-user test passes thresholds
+no abnormal pod restarts or OOMKilled events
 error rate < 1%
 p95 latency < 800ms
 p99 latency < 1500ms
 ```
 
-Nếu một điều kiện quan trọng fail, image tag đó không được promote sang production.
+If an important condition fails, that image tag should not be promoted to production.
 
-## Vì Sao Cần Staging Production-like
-
-Local development không đủ để kết luận production readiness vì local thiếu:
+The executable version of this gate is documented in:
 
 ```text
-Ingress thật
-network latency thật
+docs/production-readiness-gate.md
+```
+
+It writes a timestamped summary under:
+
+```text
+reports/production-gate/<timestamp>/production-readiness-summary.md
+```
+
+## Why Production-Like Staging Is Needed
+
+Local development cannot prove production readiness because it lacks:
+
+```text
+real ingress behavior
+network latency
 autoscaling
-resource limit
+resource limits
 secret injection
-database/cache production-like
-traffic đồng thời lớn
-observability production-like
+production-like database/cache behavior
+large concurrent traffic
+production-like observability
 ```
 
-Staging là nơi kết nối Dev và Ops:
+Staging connects Development and Operations:
 
 ```text
-Dev thấy code phản ứng thế nào dưới tải thật
-Ops thấy hạ tầng scale và chịu lỗi thế nào
-CI/CD/GitOps chứng minh release có thể lặp lại
+Developers see how code behaves under realistic load
+Operators see how infrastructure scales and fails
+CI/CD/GitOps proves that releases are repeatable
 ```
 
-## Tình Huống Xấu Nhất Cần Tránh
+## Worst-Case Scenario To Avoid
 
-Tình huống xấu nhất là một bản release chỉ pass ở local hoặc CI nhẹ, sau đó lên production rồi mới phát hiện:
+The worst case is a release that passes local and light CI checks, then fails in production with:
 
 ```text
-gateway timeout
-product service tăng p99 latency
-Redis nghẽn vì thao tác key lớn
-MongoDB query chậm
-HPA scale không kịp
-pod OOMKilled
-người dùng cuối gặp lỗi 5xx hàng loạt
-rollback không rõ quy trình
+gateway timeouts
+high product-service p99 latency
+Redis pressure from expensive key operations
+slow MongoDB queries
+slow HPA reaction
+OOMKilled pods
+large bursts of user-facing 5xx errors
+unclear rollback procedure
 ```
 
-Mục tiêu của đồ án là đưa các rủi ro này về staging, phát hiện trước khi người dùng cuối bị ảnh hưởng.
+The goal is to move these risks into staging and detect them before users are affected.
 
-## Kết Luận
+## Conclusion
 
-DevOps trong đồ án này không chỉ là dùng Docker, Kubernetes, GitHub Actions hay FluxCD. DevOps là quy trình biến một bản build thành một release có bằng chứng:
+DevOps in this project is not just using Docker, Kubernetes, GitHub Actions, or FluxCD. DevOps is the process of turning a build into a release with evidence that it is:
 
 ```text
-có thể triển khai lặp lại
-có thể quan sát
-có thể chịu tải
-có thể rollback
-có thể được tin tưởng trước khi tới production
+repeatably deployable
+observable
+load-tolerant
+rollback-capable
+trustworthy before production
 ```
 
-Đây là lý do phần đánh giá hiệu năng và staging validation là trọng tâm của đề tài.
+That is why performance evaluation and staging validation are central to the project.
