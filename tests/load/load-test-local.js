@@ -22,11 +22,11 @@ export function setup() {
 
   const res = http.post(loginUrl, payload, params);
 
-  // Kiểm tra phản hồi có dữ liệu không
+  // Check that the response contains data.
   const body = res.json();
   
-  // Dựa trên FormateData: data { data: { id, token } }
-  // Ta dùng optional chaining (?.) để tránh crash nếu API trả lỗi
+  // Based on the expected response shape: data { data: { id, token } }.
+  // Use defensive access to avoid crashing when the API returns an error.
   const token = body && body.token;
 
   if (!token) {
@@ -39,7 +39,7 @@ export function setup() {
 }
 
 export default function (data) {
-  // Nếu không có token thì dừng iteration này
+  // Stop this iteration if no token is available.
   if (!data || !data.authToken) {
     return;
   }

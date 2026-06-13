@@ -1,67 +1,67 @@
 # Performance Evaluation Plan
 
-Tài liệu này mô tả cách đánh giá hiệu năng hệ thống DACN trên môi trường staging trước khi promote cùng một image tag sang production. Trọng tâm không chỉ là "chạy được 10.000 user", mà là chứng minh hệ thống đạt ngưỡng latency, error rate, throughput, autoscaling và độ ổn định đủ tin cậy.
+This document describes how to evaluate DACN performance in staging before promoting the same image tag to production. The goal is not only to "run 10,000 users"; the goal is to prove that latency, error rate, throughput, autoscaling, and stability meet the agreed thresholds.
 
-Phần đánh giá hiệu năng là bằng chứng cho luận điểm DevOps của đồ án: tốc độ phản hồi và độ bền production không thuộc riêng Dev hay Ops, mà là kết quả của code, hạ tầng, quy trình kiểm thử, GitOps và observability cùng hoạt động.
+Performance evaluation is evidence for the DevOps argument of the project: production speed and reliability are shared outcomes of code, infrastructure, testing, GitOps, and observability.
 
-## Mục Tiêu
+## Goals
 
-Các câu hỏi chính cần trả lời:
+The main questions are:
 
 ```text
-Hệ thống chịu được tải mục tiêu 10.000 virtual users không?
-Latency p95/p99 có nằm trong ngưỡng chấp nhận được không?
-Error rate có thấp hơn 1% không?
-HPA có scale đúng khi tải tăng không?
-MongoDB/Redis/Gateway/Product/Auth nghẽn ở đâu?
-Cùng image tag này có đủ điều kiện promote sang production không?
+Can the system handle the 10,000 virtual-user target?
+Are p95 and p99 latency within the accepted thresholds?
+Is the error rate below 1%?
+Does HPA scale correctly as load increases?
+Where are the bottlenecks: MongoDB, Redis, Gateway, Product, or Auth?
+Is this exact image tag safe to promote to production?
 ```
 
-## Phạm Vi Hiện Tại
+## Current Scope
 
-Các thành phần được kiểm thử:
+Components under test:
 
-| Thành phần | Vai trò trong test |
+| Component | Role |
 | --- | --- |
-| Frontend | Kiểm tra endpoint `/` sống sau Ingress/Gateway layer |
-| Gateway | Entry point API, route `/api/*` |
+| Frontend | Verifies `/` through the ingress/gateway path |
+| Gateway | API entry point and `/api/*` router |
 | Auth service | Login, JWT, refresh-token flow |
-| Product service | Product list/detail, Redis cache behavior |
-| Redis | Cache/session/token whitelist |
-| MongoDB | Nguồn dữ liệu chính cho auth/product |
-| Kubernetes HPA | Scale pod theo tải |
+| Product service | Product list/detail and Redis cache behavior |
+| Redis | Cache/session/token store |
+| MongoDB | Primary data store for auth/product |
+| Kubernetes HPA | Pod scaling under load |
 
-Các thành phần chưa thuộc phạm vi hiện tại:
+Currently out of scope:
 
 ```text
 Order service
 Payment service
 RabbitMQ
-Observability stack đầy đủ
-Service mesh
+full observability stack validation
+service mesh
 ```
 
-## Định Nghĩa 10.000 User
+## Definition Of 10,000 Users
 
-Trong k6, 10.000 user nghĩa là **10.000 virtual users (VUs)**, không đồng nghĩa 10.000 requests/second.
+In k6, 10,000 users means **10,000 virtual users (VUs)**. It does not mean 10,000 requests per second.
 
-RPS thực tế phụ thuộc vào:
+Actual RPS depends on:
 
 ```text
-số request mỗi vòng lặp
-think time giữa các request
-latency của hệ thống
-duration giữ tải
+requests per iteration
+think time between requests
+system latency
+duration of the sustained load phase
 ```
 
-Ví dụ đơn giản:
+For example:
 
 ```text
-10.000 VUs, mỗi VU gửi 1 request mỗi 2 giây
-=> khoảng 5.000 RPS
+10,000 VUs, each sending 1 request every 2 seconds
+=> about 5,000 RPS
 ```
 
-Vì vậy báo cáo phải luôn ghi đủ:
+Reports must include:
 
 ```text
 virtual users
@@ -72,92 +72,92 @@ think time
 observed RPS
 ```
 
-## Môi Trường Staging
+## Staging Environment
 
-Staging cần đủ giống production để kết quả có ý nghĩa:
+The staging environment must be close enough to production for the results to be meaningful.
 
-| Nhóm | Thông tin cần ghi trong báo cáo |
+| Group | What to record |
 | --- | --- |
-| Kubernetes | Số node, CPU/RAM mỗi node, Kubernetes version |
-| Ingress | Nginx Ingress/Load Balancer, TLS, domain |
-| Workload | Replica ban đầu, HPA min/max, CPU target |
+| Kubernetes | Node count, CPU/RAM per node, Kubernetes version |
+| Ingress | Nginx Ingress/load balancer, TLS, domain |
+| Workload | Initial replicas, HPA min/max, CPU target |
 | Database | MongoDB mode, connection string type, instance size |
 | Cache | Redis mode, memory limit, eviction policy |
-| Image | Image tag đang test, ví dụ `sha-abc123` |
-| Load generator | k6 Cloud hoặc distributed self-hosted runners |
+| Image | Image tag under test, for example `sha-abc123` |
+| Load generator | k6 Cloud or distributed self-hosted runners |
 
-## Metrics Cần Thu Thập
+## Metrics To Collect
 
-### User-facing Metrics
+### User-Facing Metrics
 
-| Metric | Ý nghĩa |
+| Metric | Meaning |
 | --- | --- |
-| `http_req_duration p50` | Trải nghiệm user điển hình |
-| `http_req_duration p95` | Trải nghiệm phần lớn user |
-| `http_req_duration p99` | Tail latency, nhóm user chậm nhất |
-| `http_req_failed` | Tỷ lệ request lỗi |
-| `checks` | Tỷ lệ assertion pass |
-| RPS/throughput | Năng lực xử lý thực tế |
+| `http_req_duration p50` | Typical user experience |
+| `http_req_duration p95` | Experience for most users |
+| `http_req_duration p99` | Tail latency for the slowest users |
+| `http_req_failed` | Request failure rate |
+| `checks` | Assertion pass rate |
+| RPS/throughput | Actual processing capacity |
 
 ### Kubernetes Metrics
 
-| Metric | Ý nghĩa |
+| Metric | Meaning |
 | --- | --- |
-| CPU/memory per pod | Xác định pod nghẽn tài nguyên |
-| Replica count | HPA có scale không |
-| Pod restart count | Lỗi runtime/OOM/restart |
-| HPA events | Tốc độ và lý do scale |
-| Ingress 4xx/5xx | Lỗi ở edge layer |
+| CPU/memory per pod | Identifies resource pressure |
+| Replica count | Shows HPA behavior |
+| Pod restart count | Detects runtime errors and OOM |
+| HPA events | Shows scaling reason and timing |
+| Ingress 4xx/5xx | Edge-layer errors |
 
 ### Service Metrics
 
-| Service | Cần quan sát |
+| Service | What to observe |
 | --- | --- |
-| Gateway | CPU, 401/403/502, latency route |
-| Auth | Login latency, Redis token ops, JWT errors |
+| Gateway | CPU, 401/403/502, route latency |
+| Auth | Login latency, Redis token operations, JWT errors |
 | Product | Product list/detail latency, cache hit behavior |
 | Redis | Latency, memory, connected clients, slow commands |
-| MongoDB | Query latency, connection count, slow query |
+| MongoDB | Query latency, connection count, slow queries |
 
 ## Test Matrix
 
-Không nên chỉ chạy một bài 10k user. Nên có nhiều bài để hiểu hệ thống từ nhẹ đến nặng.
+Do not rely on only one 10k-user test. Run multiple tests to understand behavior from light to heavy load.
 
-| Test | Mục đích | Ví dụ tải | Kết quả mong đợi |
+| Test | Purpose | Example load | Expected outcome |
 | --- | --- | --- | --- |
-| Baseline | Đo hiệu năng gốc | 100 VUs, 5 phút | Latency thấp, không scale nhiều |
-| Load | Kiểm tra tải mục tiêu | 10.000 VUs | Pass threshold |
-| Stress | Tìm điểm gãy | tăng vượt 10.000 VUs | Xác định ngưỡng lỗi |
-| Spike | Tăng tải đột ngột | 0 -> 5.000 VUs trong 1 phút | Hệ thống không sập |
-| Soak | Chạy lâu | 1.000-2.000 VUs trong 1-4 giờ | Không memory leak/restart |
-| Scalability | So sánh trước/sau HPA/cache | nhiều cấu hình | Chứng minh tối ưu có tác dụng |
+| Baseline | Measure normal behavior | 100 VUs, 5 minutes | Low latency, little scaling |
+| Load | Validate target load | 10,000 VUs | Pass thresholds |
+| Stress | Find breaking point | beyond 10,000 VUs | Identify failure threshold |
+| Spike | Sudden load increase | 0 -> 5,000 VUs in 1 minute | System does not collapse |
+| Soak | Long run | 1,000-2,000 VUs for 1-4 hours | No memory leak/restart |
+| Scalability | Compare tuning phases | multiple configs | Prove HPA/cache/resource tuning impact |
 
-## Kịch Bản 10.000 User
+## 10,000-User Scenario
 
-Script hiện tại:
+Main script:
 
 ```text
 tests/load/staging-10000-users.js
 ```
 
-Kịch bản:
+Scenario:
 
 ```text
-10 phút ramp lên 10.000 VUs
-20 phút giữ tải 10.000 VUs
-5 phút ramp down
+10 minutes ramp up to 10,000 VUs
+20 minutes hold at 10,000 VUs
+5 minutes ramp down
 ```
 
-Traffic mix hiện tại:
+Current traffic mix:
 
 ```text
-login trong setup
+login in setup
 GET /api/products?page=1&limit=20
-GET /api/products/:id theo tỷ lệ 25% nếu có PRODUCT_ID
+GET /api/products/:id for 25% of iterations if PRODUCT_ID is configured
 think time 0.5s - 2s
 ```
 
-Threshold:
+Thresholds:
 
 ```text
 http_req_failed < 1%
@@ -166,11 +166,11 @@ p99 latency < 1500ms
 checks pass rate > 99%
 ```
 
-## Quy Trình Chạy Test
+## Test Procedure
 
-1. Deploy image tag lên staging bằng FluxCD.
-2. Xác nhận FluxCD sync thành công.
-3. Chạy smoke test staging:
+1. Deploy the image tag to staging with FluxCD.
+2. Confirm FluxCD sync succeeded.
+3. Run staging smoke tests:
 
 ```text
 /api/health
@@ -179,13 +179,13 @@ checks pass rate > 99%
 /
 ```
 
-4. Warm-up hệ thống 3-5 phút để cache và pod ổn định.
-5. Chạy bài test tương ứng bằng k6 Cloud hoặc distributed load generator.
-6. Thu thập artifact:
+4. Warm up the system for 3-5 minutes.
+5. Run the selected k6 scenario with k6 Cloud or a distributed load generator.
+6. Collect artifacts:
 
 ```text
 k6 summary
-Grafana dashboard screenshot
+Grafana dashboard screenshots
 HPA events
 pod CPU/memory
 pod restart count
@@ -193,81 +193,81 @@ MongoDB/Redis metrics
 Ingress 4xx/5xx
 ```
 
-7. So sánh với threshold.
-8. Kết luận: pass, fail, hoặc pass có điều kiện.
+7. Compare results with thresholds.
+8. Conclude: pass, fail, or pass with conditions.
 
-## Tiêu Chí Pass/Fail
+## Pass/Fail Criteria
 
-Một bài 10k user được xem là pass khi:
+A 10k-user test passes when:
 
 ```text
 http_req_failed < 1%
 p95 latency < 800ms
 p99 latency < 1500ms
 checks pass rate > 99%
-không có pod restart bất thường
-không có OOMKilled
-HPA scale trong giới hạn maxReplicas
-MongoDB/Redis không báo lỗi nghiêm trọng
+no abnormal pod restarts
+no OOMKilled events
+HPA scales within maxReplicas
+MongoDB/Redis show no serious errors
 ```
 
-Fail nếu có một trong các điều kiện:
+The test fails if any of these occur:
 
 ```text
 error rate >= 1%
-p95 hoặc p99 vượt ngưỡng liên tục
-gateway/product/auth trả nhiều 5xx
-pod restart/OOMKilled trong lúc test
-HPA không scale dù CPU cao
-database/cache trở thành bottleneck chưa có phương án xử lý
+p95 or p99 is continuously above threshold
+Gateway/Product/Auth returns many 5xx errors
+pod restart/OOMKilled occurs during the test
+HPA does not scale while CPU is high
+database/cache becomes a bottleneck without a mitigation plan
 ```
 
-## Phân Tích Bottleneck
+## Bottleneck Analysis
 
-| Dấu hiệu | Khả năng nghẽn | Hướng kiểm tra |
+| Symptom | Possible bottleneck | Where to check |
 | --- | --- | --- |
-| Gateway 502 tăng | Service đích timeout/down | Gateway logs, service health |
-| p95 product list tăng mạnh | MongoDB query hoặc cache miss | Product logs, Mongo slow query, Redis metrics |
-| CPU product pod cao | Service compute-bound | HPA events, pod CPU |
-| Redis latency cao | Cache/key operation nghẽn | Redis slowlog, memory, connected clients |
-| Mongo connection cao | Connection pool/database nghẽn | Mongo metrics, query index |
-| HPA scale chậm | Metrics server/HPA config | `kubectl describe hpa` |
-| Pod restart | OOM/crash | `kubectl describe pod`, container logs |
+| Gateway 502 increases | Downstream timeout/down service | Gateway logs, service health |
+| Product list p95 rises | MongoDB query or cache miss | Product logs, Mongo slow query, Redis metrics |
+| Product pod CPU high | Compute-bound service | HPA events, pod CPU |
+| Redis latency high | Cache/key operation pressure | Redis slowlog, memory, clients |
+| Mongo connection count high | DB connection/query pressure | Mongo metrics, indexes |
+| HPA scales late | Metrics server/HPA config | `kubectl describe hpa` |
+| Pod restart | OOM or crash | `kubectl describe pod`, logs |
 
-Điểm cần chú ý trong code hiện tại:
+Known code risk:
 
 ```js
 redis.keys("products:*")
 ```
 
-`KEYS` có thể gây nghẽn Redis khi dữ liệu cache lớn. Nếu test cho thấy Redis latency tăng khi update/delete product, nên thay bằng chiến lược cache versioning, tag-based invalidation, hoặc `SCAN`.
+`KEYS` can block Redis when the cache grows. If tests show Redis latency during product update/delete flows, replace this with cache versioning, tag-based invalidation, or `SCAN`.
 
-## Phân Tích Trước Và Sau Tối Ưu
+## Before/After Optimization Analysis
 
-Để đồ án có chiều sâu, nên chạy benchmark theo phase:
+Recommended benchmark phases:
 
-| Phase | Cấu hình | Mục tiêu so sánh |
+| Phase | Configuration | Comparison goal |
 | --- | --- | --- |
-| P1 | Replica thấp, cache cơ bản | Baseline |
-| P2 | Bật/tối ưu Redis cache | Latency product list/detail |
-| P3 | Bật HPA | Khả năng giữ error rate khi tải tăng |
-| P4 | Tuning CPU/memory requests | HPA ổn định hơn |
-| P5 | Tối ưu query/index/cache invalidation | Giảm p95/p99 |
+| P1 | Low replicas, basic cache | Baseline |
+| P2 | Redis cache enabled/tuned | Product list/detail latency |
+| P3 | HPA enabled | Error rate under growing load |
+| P4 | CPU/memory requests tuned | More stable HPA behavior |
+| P5 | Query/index/cache invalidation optimized | Lower p95/p99 |
 
-Kết quả nên trình bày bằng bảng:
+Suggested results table:
 
-| Phase | VUs | RPS | Error rate | p95 | p99 | Max replicas | Kết luận |
+| Phase | VUs | RPS | Error rate | p95 | p99 | Max replicas | Conclusion |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P1 | 1.000 | TBD | TBD | TBD | TBD | TBD | Baseline |
-| P2 | 1.000 | TBD | TBD | TBD | TBD | TBD | Cache impact |
-| P3 | 10.000 | TBD | TBD | TBD | TBD | TBD | HPA impact |
+| P1 | 1,000 | TBD | TBD | TBD | TBD | TBD | Baseline |
+| P2 | 1,000 | TBD | TBD | TBD | TBD | TBD | Cache impact |
+| P3 | 10,000 | TBD | TBD | TBD | TBD | TBD | HPA impact |
 
-## Mẫu Kết Luận Production Readiness
+## Production Readiness Summary Template
 
 ```text
 Image tag: sha-xxxxxxx
-Môi trường: staging
-Kịch bản: 10.000 VUs, 35 phút
+Environment: staging
+Scenario: 10,000 VUs, 35 minutes
 Observed RPS: TBD
 Error rate: TBD
 p95 latency: TBD
@@ -276,30 +276,42 @@ Max auth replicas: TBD
 Max product replicas: TBD
 Max gateway replicas: TBD
 Pod restarts: TBD
-Kết luận: PASS/FAIL
-Khuyến nghị: promote/chưa promote sang production
+Conclusion: PASS/FAIL
+Recommendation: promote/do not promote to production
 ```
 
-## Artifact Cần Lưu Cho Báo Cáo
+## Artifacts For The Report
 
 ```text
-k6 result JSON hoặc link k6 Cloud
-ảnh dashboard Grafana nếu có
-ảnh HPA scale timeline
-ảnh CPU/memory pod
-log lỗi tiêu biểu nếu fail
-bảng so sánh các phase benchmark
-commit/image tag đã test
+k6 result JSON or k6 Cloud link
+Grafana dashboard screenshots
+HPA scaling timeline screenshot
+pod CPU/memory screenshot
+representative error logs if failed
+benchmark comparison table
+tested commit/image tag
 ```
 
-## Kết Luận
+## Conclusion
 
-Phần đánh giá hiệu năng phải chứng minh được ba điều:
+Performance evaluation must prove three things:
 
 ```text
-hệ thống chịu được tải mục tiêu
-hệ thống scale và phục hồi hợp lý
-các rủi ro/bottleneck được phát hiện và có hướng xử lý
+the system can handle the target load
+the system scales and recovers reasonably
+risks and bottlenecks are detected and explained
 ```
 
-Chỉ khi staging validation pass theo threshold, image tag đó mới nên được promote sang production bằng FluxCD/GitOps.
+Only when staging validation passes the agreed thresholds should the image tag be promoted to production through FluxCD/GitOps.
+
+For the executable production decision flow, run:
+
+```text
+scripts/production-readiness-gate.sh
+```
+
+or from the infrastructure automation repository:
+
+```text
+make production-gate-10k
+```

@@ -15,12 +15,12 @@ router.get("/", async (req, res) => {
   };
 
   try {
-    // Kiểm tra MongoDB
+    // Check MongoDB.
     if (mongoose.connection.readyState === 1) {
         healthcheck.services.database = "connected";
     }
 
-    // Kiểm tra Redis
+    // Check Redis.
     const redisPing = await redis.ping();
     if (redisPing === "PONG") {
         healthcheck.services.redis = "connected";
