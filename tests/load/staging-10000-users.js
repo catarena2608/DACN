@@ -6,17 +6,44 @@ const BASE_URL = (__ENV.BASE_URL || "https://staging.dacn.example.com").replace(
 const AUTH_EMAIL = __ENV.AUTH_EMAIL;
 const AUTH_PASSWORD = __ENV.AUTH_PASSWORD;
 const PRODUCT_ID = __ENV.PRODUCT_ID || "";
+const HOST_HEADER = __ENV.HOST_HEADER || "";
+const LOAD_PROFILE = __ENV.LOAD_PROFILE || "10k";
+
+const profiles = {
+  smoke: [
+    { duration: "30s", target: 10 },
+    { duration: "30s", target: 0 },
+  ],
+  baseline: [
+    { duration: "2m", target: 100 },
+    { duration: "5m", target: 100 },
+    { duration: "1m", target: 0 },
+  ],
+  "10k": [
+    { duration: "10m", target: 10000 },
+    { duration: "20m", target: 10000 },
+    { duration: "5m", target: 0 },
+  ],
+};
+
+if (!profiles[LOAD_PROFILE]) {
+  throw new Error(`Unsupported LOAD_PROFILE=${LOAD_PROFILE}. Use smoke, baseline, or 10k.`);
+}
+
+function buildHeaders(extra = {}) {
+  return {
+    "Content-Type": "application/json",
+    ...(HOST_HEADER ? { Host: HOST_HEADER } : {}),
+    ...extra,
+  };
+}
 
 export const options = {
   scenarios: {
     authenticated_read_path: {
       executor: "ramping-vus",
       gracefulRampDown: "30s",
-      stages: [
-        { duration: "10m", target: 10000 },
-        { duration: "20m", target: 10000 },
-        { duration: "5m", target: 0 },
-      ],
+      stages: profiles[LOAD_PROFILE],
     },
   },
   thresholds: {
@@ -34,7 +61,7 @@ export function setup() {
   const response = http.post(
     `${BASE_URL}/api/auth/login`,
     JSON.stringify({ email: AUTH_EMAIL, password: AUTH_PASSWORD }),
-    { headers: { "Content-Type": "application/json" }, timeout: "10s" }
+    { headers: buildHeaders(), timeout: "10s" }
   );
 
   const ok = check(response, {
@@ -52,13 +79,12 @@ export function setup() {
 }
 
 export default function (data) {
-  const headers = {
+  const authHeaders = {
     Authorization: `Bearer ${data.accessToken}`,
-    "Content-Type": "application/json",
   };
 
   const listResponse = http.get(`${BASE_URL}/api/products?page=1&limit=20`, {
-    headers,
+    headers: buildHeaders(authHeaders),
     timeout: "10s",
   });
 
@@ -69,7 +95,7 @@ export default function (data) {
 
   if (PRODUCT_ID && exec.scenario.iterationInTest % 4 === 0) {
     const detailResponse = http.get(`${BASE_URL}/api/products/${PRODUCT_ID}`, {
-      headers,
+      headers: buildHeaders(authHeaders),
       timeout: "10s",
     });
 

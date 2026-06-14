@@ -12,7 +12,7 @@ const detailSchema = new mongoose.Schema({
 const Detail = mongoose.model("Detail", detailSchema, "detail");
 // ================== METHODS ==================
 
-// ✅ export tất cả trong 1 object
+// Export all helpers in one object.
 module.exports = {
   Detail,
   findDetailById: (id)=>{

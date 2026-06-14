@@ -23,7 +23,7 @@
   app.use("/api/health", healthRoutes);
   // ================== JWT MIDDLEWARE ==================
   app.use(async (req, res, next) => {
-    // ❌ Bỏ qua kiểm tra JWT cho Auth, health check và gateway root
+    // Skip JWT checks for auth routes, health checks, and gateway root.
     if (
       req.path === "/" ||
       req.originalUrl.startsWith("/api/auth") || 
@@ -33,24 +33,24 @@
       return next();
     }
 
-    // ✅ Lấy token (ưu tiên cookie, sau đó là header Authorization)
+    // Read token, preferring cookie and then Authorization header.
     const token =
       req.cookies?.token ||
       req.headers["authorization"]?.replace("Bearer ", "");
 
     if (!token) {
-      return res.status(401).json({ message: "Thiếu token xác thực" });
+      return res.status(401).json({ message: "Missing authentication token" });
     }
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = decoded; // Lưu payload để gửi tiếp sang service
+      req.user = decoded; // Store payload for downstream services.
       next();
     } catch (err) {
       console.error("❌ JWT error:", err.message);
       return res
         .status(403)
-        .json({ message: "Token không hợp lệ hoặc đã hết hạn" });
+        .json({ message: "Invalid or expired token" });
     }
   });
   // ================== RATE LIMITER ==================
@@ -60,7 +60,7 @@
 
   // ================== PROXY ==================
   app.use("/api", (req, res) => {
-    // 1️⃣ Xác định service đích
+    // 1. Resolve target service.
     let targetBase = null;
     let targetPrefix = "";
     for (const prefix in serviceMap) {
@@ -72,30 +72,30 @@
     }
 
     if (!targetBase) {
-      console.log(`[Gateway ❌] Không tìm thấy service cho ${req.originalUrl}`);
+      console.log(`[Gateway] No service found for ${req.originalUrl}`);
       return res
         .status(404)
-        .json({ message: "Không tìm thấy service phù hợp" });
+        .json({ message: "No matching service found" });
     }
     const cleanPath = req.originalUrl.replace(targetPrefix, "") || "/";
-    // 2️⃣ Giữ nguyên path và query
+    // 2. Preserve path and query.
     const targetUrl = new URL(targetBase + cleanPath);
 
     console.log(
       `[Gateway 🚀] ${req.method} ${req.originalUrl} → ${targetUrl.href}`
     );
 
-    // 3️⃣ Sao chép header
+    // 3. Copy headers.
     const headers = { ...req.headers };
     delete headers.host;
 
-    // ⚡ Nếu đã decode JWT, gắn info user vào header
+    // Attach decoded user information for downstream services.
     if (req.user) {
       headers["x-user-id"] = req.user.userId || req.user.id || req.user._id;
       headers["x-user-email"] = req.user.email;
     }
 
-    // 4️⃣ Tạo request tới service
+    // 4. Create request to target service.
     const options = {
       method: req.method,
       headers,
@@ -112,19 +112,19 @@
     proxyReq.on("error", (err) => {
       console.error(`[Gateway ❌] ${req.method} ${targetUrl.href} → ${err.message}`);
       if (!res.headersSent) {
-        res.status(502).json({ message: "Lỗi kết nối tới service nội bộ" });
+        res.status(502).json({ message: "Internal service connection error" });
       }
     });
 
-    // 5️⃣ Truyền body
+    // 5. Forward request body.
     req.pipe(proxyReq);
   });
 
   // ================== ROOT ==================
-  app.get("/", (req, res) => res.send("🌐 API Gateway đang hoạt động! 🚀"));
+  app.get("/", (req, res) => res.send("API Gateway is running"));
 
   // ================== START ==================
   const PORT = process.env.GATEWAY_PORT || 3000;
   app.listen(PORT, () => {
-    console.log(`🚪 Gateway chạy ở http://localhost:${PORT}`);
+    console.log(`Gateway running at http://localhost:${PORT}`);
   });

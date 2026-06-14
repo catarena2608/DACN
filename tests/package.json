@@ -4,10 +4,10 @@
   "description": "CI tests: smoke, contract, integration",
   "private": true,
   "scripts": {
-    "smoke":       "node --test tests/smoke/smoke.test.js",
-    "contract":    "node --test tests/contract/contract.test.js",
-    "integration": "node --test tests/integration/integration.test.js",
-    "test:ci":     "node --test tests/smoke/smoke.test.js && node --test tests/contract/contract.test.js && node --test tests/integration/integration.test.js"
+    "smoke": "node --test smoke/smoke.test.js",
+    "contract": "node --test contract/contract.test.js",
+    "integration": "node --test integration/integration.test.js",
+    "test:ci": "node --test smoke/smoke.test.js && node --test contract/contract.test.js && node --test integration/integration.test.js"
   },
   "engines": {
     "node": ">=20"
