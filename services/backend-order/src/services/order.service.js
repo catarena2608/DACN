@@ -1,3 +1,4 @@
+const { runWithSpan } = require("../utils/tracer");
 const orderModel = require("../models/order.model");
 const redis = require("../utils/redis");
 const { acquireLock, releaseLock } = require("../utils/lock");
@@ -131,117 +132,117 @@ exports.getOrderById = async (id) => {
 
 // ================== CREATE ==================
 
-exports.addOrder = async ({
-  userID,
-  products,
-  address,
-}) => {
+exports.addOrder = async ({ userID, products, address }) => {
+  return await runWithSpan("order.service.add_order", async (span) => {
+    span.setAttribute("user.id", userID);
+    const reserved = [];
+    let total = 0;
+    const orderProducts = [];
 
-  const reserved = [];
-  let total = 0;
-  const orderProducts = [];
+    try {
 
-  try {
+      for (const item of products) {
 
-    for (const item of products) {
+        const result = await callProduct({
+          action: "RESERVE_STOCK",
+          productID: item.productID,
+          quantity: item.num,
+        });
 
-      const result = await callProduct({
-        action: "RESERVE_STOCK",
-        productID: item.productID,
-        quantity: item.num,
-      });
+        if (!result.success) {
+          throw new Error(result.error);
+        }
 
-      if (!result.success) {
-        throw new Error(result.error);
+        reserved.push({
+          productID: item.productID,
+          quantity: item.num,
+        });
+
+        total += result.price * item.num;
+
+        orderProducts.push({
+          productID: item.productID,
+          num: item.num,
+          price: result.price,
+        });
       }
 
-      reserved.push({
-        productID: item.productID,
-        quantity: item.num,
+      const order = await orderModel.createOrder({
+        userID,
+        products: orderProducts,
+        total,
+        address,
       });
 
-      total += result.price * item.num;
+      await clearOrderListCache();
 
-      orderProducts.push({
-        productID: item.productID,
-        num: item.num,
-        price: result.price,
-      });
+      return order;
+
+    } catch (err) {
+
+      for (const item of reserved) {
+
+        await callProduct({
+          action: "RELEASE_STOCK",
+          productID: item.productID,
+          quantity: item.quantity,
+        });
+      }
+
+      throw err;
     }
-
-    const order = await orderModel.createOrder({
-      userID,
-      products: orderProducts,
-      total,
-      address,
-    });
-
-    await clearOrderListCache();
-
-    return order;
-
-  } catch (err) {
-
-    for (const item of reserved) {
-
-      await callProduct({
-        action: "RELEASE_STOCK",
-        productID: item.productID,
-        quantity: item.quantity,
-      });
-    }
-
-    throw err;
-  }
+  });
 };
 
 // ================== DELETE ==================
 
 exports.deleteOrder = async (orderID) => {
+  return await runWithSpan("order.service.delete_order", async (span) => {
+    span.setAttribute("order.id", orderID);
+    const lockKey = `lock:order:${orderID}`;
 
-  const lockKey = `lock:order:${orderID}`;
+    const token = await acquireLock(
+      lockKey,
+      10000
+    );
 
-  const token = await acquireLock(
-    lockKey,
-    10000
-  );
-
-  if (!token) {
-    throw new Error("Order busy");
-  }
-
-  try {
-
-    const order = await orderModel.findOrderById(orderID);
-
-    if (!order) {
-      throw new Error("Order not found");
+    if (!token) {
+      throw new Error("Order busy");
     }
 
-    for (const item of order.products) {
+    try {
 
-      const result = await callProduct({
-        action: "RELEASE_STOCK",
-        productID: item.productID,
-        quantity: item.num,
-      });
+      const order = await orderModel.findOrderById(orderID);
 
-      if (!result.success) {
-        throw new Error(result.error);
+      if (!order) {
+        throw new Error("Order not found");
       }
+
+      for (const item of order.products) {
+
+        const result = await callProduct({
+          action: "RELEASE_STOCK",
+          productID: item.productID,
+          quantity: item.num,
+        });
+
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+      }
+
+      await orderModel.deleteOrder(orderID);
+
+      await redis.del(`order:${orderID}`);
+
+      await clearOrderListCache();
+
+      return {
+        success: true,
+      };
+
+    } finally {
+      await releaseLock(lockKey, token);
     }
-
-    await orderModel.deleteOrder(orderID);
-
-    await redis.del(`order:${orderID}`);
-
-    await clearOrderListCache();
-
-    return {
-      success: true,
-    };
-
-  } finally {
-    await releaseLock(lockKey, token);
-  }
+  });
 };
