@@ -1,3 +1,4 @@
+const { runWithSpan } = require("../utils/tracer");
 const productModel = require("../models/product.model");
 const detailModel = require("../models/detail.model");
 const redis = require("../utils/redis");
