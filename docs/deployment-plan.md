@@ -1,54 +1,53 @@
 # Deployment Plan For The Lab
 
-Tài liệu này mô tả kế hoạch triển khai đồ án theo hướng production-like nhưng vẫn vừa sức trong môi trường lab. Mục tiêu là hoàn thiện đầy đủ tech stack cốt lõi để chứng minh quy trình DevOps, GitOps, staging validation và đánh giá hiệu năng, không biến đồ án thành một bài triển khai cloud quá nặng.
+This document describes the lab deployment plan for the project. The goal is to build a production-like environment that is still practical for a lab, and to prove the DevOps/GitOps, staging validation, and performance-evaluation workflow without turning the project into a heavy cloud platform exercise.
 
-## Luận Điểm Triển Khai
+## Deployment Argument
 
-Đồ án không cần bắt đầu bằng AWS/EKS. Điều quan trọng hơn là chứng minh được workflow:
+The project does not need to start with AWS/EKS. The more important goal is to prove this workflow:
 
 ```text
-Developer push code
-
+Developer pushes code
 GitHub Actions build/test/security scan
-Image được push lên GHCR
-FluxCD sync staging từ Git state
-Staging validation chạy smoke test + k6 load test
-Nếu pass, cùng image tag được promote sang production state
-FluxCD sync production
+Images are pushed to GHCR
+FluxCD syncs staging from Git state
+Staging validation runs smoke tests and k6 load tests
+If validation passes, the same image tag is promoted to production state
+FluxCD syncs production
 ```
 
-Vì vậy môi trường lab nên ưu tiên:
+The lab environment should prioritize:
 
 ```text
-dễ dựng
-dễ demo
-dễ quan sát
-đủ giống production để đánh giá hiệu năng
-không quá nặng như một cloud platform hoàn chỉnh
+easy setup
+easy demo
+observable behavior
+enough production similarity for performance evaluation
+reasonable resource usage
 ```
 
-## Kiến Trúc Mục Tiêu
+## Target Architecture
 
-Sơ đồ kiến trúc nằm tại:
+The architecture diagram is stored at:
 
 ```text
 docs/assets/architecture.png
 ```
 
-Sơ đồ hiện tại có các nhóm chính:
+Main groups:
 
-| Nhóm | Thành phần |
+| Group | Components |
 | --- | --- |
 | Entry | Client, Load Balancer, API Gateway, Frontend |
 | Business services | Auth, User, Product, Order, Payment, Ranking, Admin |
-| Data | MongoDB theo domain, Redis Cache, RabbitMQ |
+| Data | MongoDB per domain, Redis Cache, RabbitMQ |
 | Metrics | Prometheus, Node Exporter, Grafana |
 | Logs | OpenTelemetry Collector, Elasticsearch, Kibana |
-| Traces | OpenTelemetry Collector, Jaeger Query |
+| Traces | OpenTelemetry Collector, Jaeger UI |
 | Release workflow | GitHub Actions, GHCR, FluxCD, Helm |
 | Performance validation | k6, staging validation workflow |
 
-Repo hiện tại đã có:
+Current repository scope:
 
 ```text
 frontend
@@ -57,439 +56,276 @@ auth service
 product service
 order service
 nginx local proxy
-RabbitMQ trong Docker Compose/Helm
-docker compose
-helm chart
-github actions ci
+RabbitMQ in Docker Compose/Helm
+Docker Compose
+Helm chart
+GitHub Actions CI
 k6 staging script
 ```
 
-Các service còn lại như Payment, Ranking và Admin nên được xem là phase mở rộng, không nên trình bày như phần đã hoàn thiện.
+Payment, Ranking, and Admin should be presented as future extensions unless implemented.
 
-## Tech Stack Đề Xuất
+## Proposed Tech Stack
 
 ### Application
 
-| Thành phần | Công nghệ | Lý do |
+| Component | Technology | Reason |
 | --- | --- | --- |
-| Frontend | React + Vite | Nhẹ, dễ build image, phù hợp dashboard/client demo |
-| API Gateway | Node.js + Express | Đơn giản, dễ route service và đo latency |
-| Services | Node.js + Express | Đồng nhất stack backend, dễ container hóa |
-| Database | MongoDB | Phù hợp dữ liệu document/catalog, dễ chia DB theo domain |
-| Cache/session | Redis | Cache product, token whitelist, giảm tải DB |
-| Message broker | RabbitMQ | Dùng cho phase event-driven như Order/Payment |
+| Frontend | React + Vite | Lightweight web client and easy image build |
+| API Gateway | Node.js + Express | Simple routing and latency measurement |
+| Services | Node.js + Express | Consistent backend stack |
+| Database | MongoDB | Document model for catalog/domain data |
+| Cache/session | Redis | Product cache and token/session data |
+| Message broker | RabbitMQ | Event/RPC path for order-related flows |
 
 ### Platform
 
-| Thành phần | Công nghệ | Lý do |
+| Component | Technology | Reason |
 | --- | --- | --- |
-| Container | Docker | Chuẩn hóa artifact |
-| Local runtime | Docker Compose | Chạy nhanh full stack local |
-| Orchestration | Kubernetes | Môi trường production-like |
-| Package deploy | Helm | Templating, values theo môi trường |
-| GitOps CD | FluxCD | Cluster tự reconcile từ Git state |
-| Registry | GHCR | Tích hợp GitHub Actions, đơn giản cho đồ án |
-| Ingress | Nginx Ingress Controller | Phổ biến, dễ cấu hình |
+| Container | Docker | Standard build artifact |
+| Local runtime | Docker Compose | Fast local full-stack testing |
+| Orchestration | Kubernetes | Production-like runtime |
+| Deployment package | Helm | Values per environment |
+| GitOps CD | FluxCD | Cluster reconciles from Git |
+| Registry | GHCR | Integrates with GitHub Actions |
+| Ingress | Nginx Ingress Controller | Common and easy to configure |
 
 ### Observability
 
-| Nhu cầu | Công nghệ | Ghi chú |
+| Need | Technology | Notes |
 | --- | --- | --- |
-| Metrics | Prometheus | Thu metrics cluster/service |
-| Dashboard | Grafana | Hiển thị CPU, memory, HPA, latency |
-| Node metrics | Node Exporter | Quan sát tài nguyên node |
-| Logs | Elasticsearch + Kibana | Search, filter, log analytics |
-| Traces | OpenTelemetry Collector + Jaeger | Trace request qua gateway/service |
-| Load test | k6 | Đo p95/p99/error rate/RPS |
+| Metrics | Prometheus | Cluster/service metrics |
+| Dashboard | Grafana | CPU, memory, HPA, latency dashboards |
+| Node metrics | Node Exporter | Node resource visibility |
+| Logs | Elasticsearch + Kibana | Search/filter/log analysis |
+| Traces | OpenTelemetry Collector + Jaeger UI | Request trace visualization |
+| Load test | k6 | p95/p99/error rate/RPS |
 
-## Vì Sao Dùng ELK Thay Vì Loki
+## Why ELK Instead Of Loki
 
-Loki nhẹ hơn và rất hợp khi muốn lưu log theo label, tích hợp Grafana nhanh, chi phí thấp. Tuy nhiên trong đồ án này, ELK có thể được chọn vì mục tiêu không chỉ là "xem log", mà là **phân tích log dưới tải lớn để phục vụ production readiness**.
+Loki is lighter and integrates quickly with Grafana. ELK can be justified here because the goal is not only to store logs but to analyze logs under load for production-readiness evidence.
 
-Các lý do hợp lý để chọn ELK:
-
-```text
-Elasticsearch mạnh về full-text search.
-Kibana mạnh về filtering, dashboard, timeline và phân tích log.
-ELK phổ biến trong môi trường enterprise, dễ giải thích với bài toán production.
-Log có thể được index theo service, trace_id, status_code, error message, latency bucket.
-Khi chạy k6, có thể tìm nhanh lỗi 5xx, timeout, request chậm, correlation theo trace_id.
-ELK hỗ trợ use case forensic/debug tốt hơn khi log message phức tạp.
-```
-
-Phản biện nếu bị hỏi "ELK nặng quá":
+Reasons to choose ELK:
 
 ```text
-Đúng, ELK nặng hơn Loki. Đây là trade-off có chủ đích.
-Đồ án không dùng ELK vì nó nhẹ, mà vì nó mạnh cho log analytics và full-text search.
-Trong lab, ELK sẽ chạy cấu hình single-node, retention ngắn, resource limit rõ ràng.
-Không triển khai Elasticsearch HA/cluster lớn để tránh lệch trọng tâm.
-Nếu mục tiêu chỉ là log storage rẻ và nhẹ, Loki hợp hơn; nếu mục tiêu là phân tích log sâu phục vụ performance debugging, ELK có lý do rõ ràng.
+Elasticsearch is strong for full-text search.
+Kibana provides filtering, dashboards, timelines, and log analytics.
+ELK is common in enterprise production environments.
+Logs can be indexed by service, trace_id, status_code, error message, and latency bucket.
+During k6 tests, operators can quickly find 5xx, timeouts, slow requests, and correlated trace IDs.
 ```
 
-Cách làm cho ELK nhẹ hơn trong lab:
+If asked why ELK is heavy:
 
 ```text
-chạy Elasticsearch single-node
-giới hạn heap 1-2GB
-retention 1-3 ngày
-không bật replica shard trong lab
-không dùng Logstash nếu không cần
-dùng OpenTelemetry Collector hoặc Fluent Bit để gửi log
-chỉ thu log từ namespace staging/app thay vì toàn cluster
+Yes, ELK is heavier than Loki. This is an intentional trade-off.
+The project uses ELK for log analytics depth, not for minimal resource usage.
+In the lab, Elasticsearch can run single-node with short retention and explicit resource limits.
+For cheaper log storage only, Loki would be simpler.
 ```
 
-Vì vậy, stack thực tế nên gọi chính xác là:
+## Recommended Lab Model
 
-```text
-Elasticsearch + Kibana + OpenTelemetry Collector/Fluent Bit
-```
+### Cluster Choice
 
-Không nhất thiết phải chạy đủ Logstash nếu mục tiêu là giảm tải lab.
-
-## Mô Hình Lab Khuyến Nghị
-
-### Lựa Chọn Cluster
-
-Ưu tiên theo mức độ dễ triển khai:
-
-| Lựa chọn | Khi nào dùng | Nhận xét |
+| Option | When to use | Notes |
 | --- | --- | --- |
-| kind/minikube local | Demo nhanh, máy cá nhân mạnh | Dễ nhất nhưng hạn chế tài nguyên |
-| k3s trên VPS | Lab production-like vừa sức | Khuyến nghị cho đồ án |
-| AWS/EKS | Khi muốn cloud-native thật | Nặng, dễ lệch trọng tâm |
+| kind/Minikube local | Quick demo on a strong personal machine | Easiest, but resource-limited |
+| k3s on VPS/VMs | Production-like lab within budget | Recommended for the project |
+| AWS/EKS | Cloud-native target | Powerful but heavier and easier to over-scope |
 
-Khuyến nghị:
+Recommended minimum if running ELK, Prometheus, Grafana, MongoDB, Redis, RabbitMQ, and app services:
 
 ```text
-k3s trên VPS hoặc máy lab 8 vCPU / 16GB RAM trở lên
+8 vCPU / 16GB RAM or higher
 ```
 
-Nếu phải chạy cả ELK, Prometheus, Grafana, MongoDB, Redis, RabbitMQ và app services, cấu hình thấp hơn sẽ dễ nghẽn tài nguyên.
-
-### Namespace
+### Namespaces
 
 ```text
 flux-system          # FluxCD
 ingress-nginx        # Ingress Controller
 observability        # Prometheus, Grafana, Elasticsearch, Kibana, Jaeger, OTel
-data                 # MongoDB, Redis, RabbitMQ nếu chạy trong cluster
+data                 # MongoDB, Redis, RabbitMQ if run in-cluster
 dacn-staging         # Application staging
-dacn-prod            # Application production-like
+dacn-prod            # Production-like application environment
 ```
 
-Trong lab có thể dùng chung cluster nhưng tách namespace. Production thật nên dùng cluster hoặc node pool riêng.
-
-## Kế Hoạch Triển Khai Theo Phase
+## Deployment Phases
 
 ### Phase 1: Local Baseline
 
-Mục tiêu:
+Goal:
 
 ```text
-chạy được frontend/gateway/auth/product/local data layer
-đảm bảo developer có thể reproduce nhanh
+run frontend/gateway/auth/product/local data layer
+ensure developers can reproduce the stack quickly
 ```
 
-Công việc:
+Work:
 
 ```text
-Docker Compose chạy full stack
-health check pass
+Docker Compose full stack
+health checks pass
 login flow pass
 product list/detail pass
 ```
 
-Artifact:
-
-```text
-deploy/compose/docker-compose.yml
-services/*/.env.example
-apps/*/.env.example
-```
-
 ### Phase 2: Kubernetes Lab Base
 
-Mục tiêu:
+Goal:
 
 ```text
-có cluster Kubernetes lab
-có Ingress Controller
-có StorageClass
-có namespace chuẩn
+create a Kubernetes lab cluster
+install ingress controller
+configure storage class
+create namespaces
+install FluxCD
+connect FluxCD to GitOps state
 ```
 
-Công việc:
+Expected result:
 
 ```text
-cài k3s/kind/minikube
-cài ingress-nginx
-tạo namespace
-cài FluxCD
-kết nối FluxCD với repo Git/GitOps state
+kubectl get nodes passes
+FluxCD sync passes
+Ingress works
 ```
 
-Kết quả mong đợi:
+### Phase 3: App Deployment With FluxCD
+
+Goal:
 
 ```text
-kubectl get nodes pass
-FluxCD sync pass
-Ingress hoạt động
+GitHub Actions does not deploy directly
+FluxCD deploys the app through Helm
 ```
 
-### Phase 3: App Deployment Bằng FluxCD
-
-Mục tiêu:
+Work:
 
 ```text
-GitHub Actions không deploy trực tiếp
-FluxCD triển khai app bằng Helm
+GitHub Actions builds images and pushes to GHCR
+Helm chart uses environment imageTag
+FluxCD syncs staging namespace
+staging URL is reachable
 ```
 
-Công việc:
+Expected result:
 
 ```text
-GitHub Actions build image và push GHCR
-Helm chart dùng imageTag theo môi trường
-FluxCD sync staging namespace
-staging URL truy cập được
-```
-
-Kết quả mong đợi:
-
-```text
-/api/health pass
-/api/auth/health pass
-/api/products/health pass
-/ pass
+/api/health passes
+/api/auth/health passes
+/api/products/health passes
+/ passes
 ```
 
 ### Phase 4: Data Layer
 
-Mục tiêu:
+Goal:
 
 ```text
-MongoDB/Redis/RabbitMQ có mặt trong lab
-service có thể kết nối ổn định
+MongoDB, Redis, and RabbitMQ are available in the lab
+services connect reliably
 ```
 
-Triển khai lab:
+Lab implementation:
 
 ```text
-MongoDB: Bitnami MongoDB standalone hoặc replica set nhỏ
-Redis: Redis standalone cho lab, Redis cluster nếu còn tài nguyên
-RabbitMQ: Bitnami RabbitMQ
+MongoDB: Bitnami MongoDB standalone
+Redis: standalone for lab, cluster if resources allow
+RabbitMQ: standalone broker for order/product flow
 ```
 
-Lưu ý:
+Production recommendation:
 
 ```text
-staging và production-like không nên dùng chung database name
-production thật nên dùng managed MongoDB/Redis hoặc cluster HA
+use managed database/cache/broker services, or HA charts with backup and secret management
 ```
 
 ### Phase 5: Observability
 
-Mục tiêu:
+Goal:
 
 ```text
-thu metrics, logs, traces để phân tích hiệu năng
+collect metrics, logs, and traces for validation evidence
 ```
 
-Triển khai:
+Minimum:
 
 ```text
-kube-prometheus-stack cho Prometheus + Grafana
-Node Exporter đi kèm stack
-OpenTelemetry Collector làm gateway telemetry
-Jaeger cho trace visualization
-Elasticsearch + Kibana cho log analytics
+Prometheus
+Grafana
+Node Exporter
+kube-state-metrics
 ```
 
-Lab mode:
+Extended:
 
 ```text
-Prometheus retention ngắn
-Elasticsearch single-node
-Kibana một replica
-Jaeger all-in-one hoặc production mode nhẹ
-OTel Collector một replica
+OpenTelemetry Collector
+Elasticsearch
+Kibana
+Jaeger UI
 ```
 
-### Phase 6: Staging Validation
+### Phase 6: Performance Validation
 
-Mục tiêu:
+Goal:
 
 ```text
-chứng minh staging đủ điều kiện promote image tag
+prove latency, error rate, throughput, autoscaling, and stability thresholds
 ```
 
-Công việc:
+Work:
 
 ```text
-Helm lint/template
-smoke test staging endpoint
-k6 baseline test
-k6 10.000 VUs test nếu tài nguyên và load generator cho phép
-thu metrics/logs/traces
+baseline test
+load test
+stress/spike/soak tests if resources allow
+collect k6, Grafana, HPA, logs, and trace artifacts
 ```
 
-Artifact:
+### Phase 7: Promotion And Rollback
+
+Goal:
 
 ```text
-k6 summary
-Grafana screenshots
-Kibana query screenshots
-Jaeger trace screenshots
-HPA events
-pod CPU/memory
+only promote image tags that pass staging validation
 ```
 
-### Phase 7: Production-like Promotion
-
-Mục tiêu:
+Promotion:
 
 ```text
-cùng image tag đã pass staging được promote sang production-like namespace
+copy staging imageTag to production GitOps state
+unsuspend production HelmRelease
+merge through PR/review
+FluxCD syncs production
 ```
 
-Công việc:
+Rollback:
 
 ```text
-cập nhật imageTag production trong GitOps state
-FluxCD sync dacn-prod
-smoke test production-like endpoint
+revert the GitOps commit
+or set imageTag back to a known-good sha
+FluxCD reconciles the previous state
 ```
 
-Không cần AWS để chứng minh phase này. Điều cần chứng minh là quy trình promotion bằng GitOps.
+## Production Readiness Evidence
 
-## Thứ Tự Ưu Tiên Triển Khai
-
-Nếu thời gian hạn chế, ưu tiên như sau:
+The final report should include:
 
 ```text
-1. CI + GHCR image
-2. Kubernetes lab + FluxCD
-3. Helm staging deploy
-4. Prometheus + Grafana
-5. k6 staging validation
-6. Elasticsearch + Kibana
-7. OTel + Jaeger
-8. RabbitMQ + service mở rộng
-9. production-like namespace promotion
+FluxCD sync screenshots
+kubectl get pods -A
+staging smoke test results
+k6 baseline/load results
+Grafana CPU/memory/HPA dashboards
+logs/traces if enabled
+image tag promoted from staging to production-like
+rollback explanation
 ```
 
-Điều này giúp đồ án vẫn có giá trị ngay cả khi chưa hoàn thiện toàn bộ stack.
+## Conclusion
 
-## Resource Planning Cho Lab
+The deployment target is not just "Kubernetes runs the app." The target is a repeatable release workflow with staging validation and evidence that a specific image tag is safe enough to promote.
 
-### Tối Thiểu
-
-```text
-4 vCPU
-8GB RAM
-40GB disk
-```
-
-Chạy được app, MongoDB, Redis, Prometheus/Grafana cơ bản. Không phù hợp chạy ELK thoải mái.
-
-### Khuyến Nghị
-
-```text
-8 vCPU
-16GB RAM
-80GB disk
-```
-
-Chạy được app, data layer, Prometheus/Grafana, OTel, Jaeger, Elasticsearch/Kibana single-node ở mức lab.
-
-### Nếu Chạy 10.000 VUs
-
-```text
-load generator nên dùng k6 Cloud hoặc distributed runners
-cluster lab có thể không pass 10.000 VUs, nhưng vẫn có thể dùng để tìm bottleneck
-```
-
-Không nên kết luận thất bại nếu lab nhỏ không chịu được 10.000 VUs. Kết quả đó nên được dùng để phân tích capacity planning.
-
-## GitOps Layout Đề Xuất
-
-Trong cùng repo ở giai đoạn đồ án:
-
-```text
-dacn-app/
-  apps/
-  services/
-  packages/
-  deploy/
-    compose/
-    helm/dacn/
-    nginx/
-  tests/
-  scripts/
-  docs/
-```
-
-Khi dự án trưởng thành hơn, có thể tách sang repo riêng:
-
-```text
-dacn-app       # source code + Dockerfile + Helm chart
-dacn-gitops    # FluxCD desired state for clusters/environments
-```
-
-Repo `dacn-gitops` dự kiến:
-
-```text
-dacn-gitops/
-  clusters/
-    lab/
-      flux-system/
-      infrastructure/
-      apps/
-  apps/
-    dacn/
-      staging/
-      production/
-  secrets/
-    staging/
-    production/
-```
-
-## Rủi Ro Và Cách Giới Hạn Phạm Vi
-
-| Rủi ro | Cách xử lý |
-| --- | --- |
-| Stack quá lớn | Chia phase, ưu tiên CI/Flux/staging validation trước |
-| ELK quá nặng | Single-node, retention ngắn, resource limit |
-| 10k VUs làm sập lab | Xem là stress result, phân tích bottleneck/capacity |
-| AWS quá phức tạp | Dùng k3s/VPS/lab cluster |
-| Observability mất nhiều thời gian | Bắt đầu Prometheus/Grafana trước, thêm ELK/Jaeger sau |
-| Service chưa đủ nhiều | Trình bày service còn lại là roadmap/phase mở rộng |
-
-## Definition Of Done
-
-Đồ án được xem là hoàn thiện về triển khai khi có:
-
-```text
-CI build/test/security scan pass
-image push lên GHCR
-FluxCD sync staging
-Helm values theo dev/staging/prod
-staging smoke test pass
-k6 test có kết quả và phân tích
-Prometheus/Grafana dashboard cho resource/HPA
-ELK/Kibana log search demo được lỗi hoặc request chậm
-Jaeger trace demo được một request qua gateway/service
-production-like promotion bằng GitOps
-tài liệu phân tích bottleneck và production readiness
-```
-
-## Kết Luận
-
-Kế hoạch triển khai nên đi theo hướng:
-
-```text
-nhỏ trước, đúng trước, đo được trước
-```
-
-Không cần ôm AWS ngay. Một lab Kubernetes với FluxCD, Helm, GHCR, Prometheus/Grafana, ELK, OTel/Jaeger và k6 là đủ để chứng minh trọng tâm đồ án: Dev và Ops cùng tạo ra quy trình kiểm định production readiness trước khi release tới người dùng cuối.

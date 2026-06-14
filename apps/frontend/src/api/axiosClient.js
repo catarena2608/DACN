@@ -6,7 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const axiosClient = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // 👈 để gửi cookie refresh token
+  withCredentials: true, // Send refresh-token cookie.
 });
 
 // attach access token

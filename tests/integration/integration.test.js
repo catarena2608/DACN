@@ -1,22 +1,22 @@
 /**
  * Integration Tests
  *
- * Mục tiêu: test các luồng nghiệp vụ thực tế xuyên nhiều service,
- * đi qua Gateway giống hệt cách frontend sử dụng.
+ * Goal: test real business flows across multiple services,
+ * through the Gateway exactly as the frontend uses them.
  *
- * Các luồng được test:
+ * Tested flows:
  *   1. Auth flow: register → login → refresh → logout
- *   2. Authenticated product CRUD qua gateway
- *   3. Order flow: login → tạo product → đặt hàng → kiểm tra tồn kho → xóa đơn → hoàn tồn kho
- *   4. Stock reservation rollback: đặt hàng với sản phẩm không đủ hàng
- *   5. Gateway auth guard: verify các protected route không thể truy cập khi không có token
+ *   2. Authenticated product CRUD through the gateway
+ *   3. Order flow: login → create product → place order → verify stock → delete order → restore stock
+ *   4. Stock reservation rollback: order with insufficient stock
+ *   5. Gateway auth guard: verify protected routes cannot be accessed without a token
  *
- * Biến môi trường:
+ * Environment variables:
  *   GATEWAY_URL   default http://localhost:3000
- *   AUTH_URL      default http://localhost:3001  (dùng để verify state)
- *   PRODUCT_URL   default http://localhost:3002  (bypass gateway cho setup)
+ *   AUTH_URL      default http://localhost:3001  (used to verify state)
+ *   PRODUCT_URL   default http://localhost:3002  (bypass gateway for setup)
  *
- * Seed user: mặc định lấy từ auth.json, có thể override qua SEED_EMAIL / SEED_PASSWORD
+ * Seed user: defaults to auth.json and can be overridden through SEED_EMAIL / SEED_PASSWORD.
  */
 
 const { test, describe, before, after } = require("node:test");
@@ -46,7 +46,7 @@ async function request(url, options = {}) {
   return { status: res.status, body, headers: res.headers, setCookie };
 }
 
-// Lấy refresh token từ set-cookie header
+// Extract refresh token from the set-cookie header.
 function extractRefreshToken(setCookie) {
   const match = setCookie.match(/refreshToken=([^;]+)/);
   return match ? match[1] : null;
@@ -58,8 +58,8 @@ describe("Integration: Auth flow", () => {
   let refreshCookie  = null;
   let testEmail      = null;
 
-  // ── 1a. Register user mới ──
-  test("register user mới thành công → 201", async () => {
+  // ── 1a. Register a new user ──
+  test("register new user successfully → 201", async () => {
     testEmail = `ci_test_${Date.now()}@test.com`;
     const { status, body } = await request(`${AUTH}/register`, {
       method: "POST",
@@ -69,11 +69,11 @@ describe("Integration: Auth flow", () => {
         password: TEST_PASSWORD,
       }),
     });
-    assert.equal(status, 201, `Register thất bại: ${JSON.stringify(body)}`);
+    assert.equal(status, 201, `Register failed: ${JSON.stringify(body)}`);
   });
 
-  // ── 1b. Register email trùng ──
-  test("register email đã tồn tại → 400", async () => {
+  // ── 1b. Register duplicate email ──
+  test("register existing email → 400", async () => {
     const { status } = await request(`${AUTH}/register`, {
       method: "POST",
       body: JSON.stringify({
@@ -85,65 +85,65 @@ describe("Integration: Auth flow", () => {
     assert.equal(status, 400);
   });
 
-  // ── 1c. Login với user vừa tạo ──
-  test("login với user vừa tạo → accessToken + refreshToken cookie", async () => {
+  // ── 1c. Login with the newly created user ──
+  test("login with newly created user → accessToken + refreshToken cookie", async () => {
     const { status, body, setCookie } = await request(`${AUTH}/login`, {
       method: "POST",
       body: JSON.stringify({ email: testEmail, password: TEST_PASSWORD }),
     });
 
-    assert.equal(status, 200, `Login thất bại: ${JSON.stringify(body)}`);
-    assert.ok(body.accessToken, "thiếu accessToken");
+    assert.equal(status, 200, `Login failed: ${JSON.stringify(body)}`);
+    assert.ok(body.accessToken, "missing accessToken");
     assert.equal(typeof body.accessToken, "string");
-    assert.ok(setCookie.includes("refreshToken"), "thiếu refreshToken cookie");
+    assert.ok(setCookie.includes("refreshToken"), "missing refreshToken cookie");
 
     accessToken   = body.accessToken;
     refreshCookie = setCookie;
   });
 
-  // ── 1d. Dùng accessToken để gọi authenticated API qua gateway ──
-  test("dùng accessToken gọi GET /api/products qua gateway → 200", async () => {
+  // ── 1d. Use accessToken to call authenticated API through the gateway ──
+  test("use accessToken to call GET /api/products through gateway → 200", async () => {
     const { status } = await request(`${GATEWAY}/api/products`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    assert.equal(status, 200, "Authenticated request thất bại");
+    assert.equal(status, 200, "Authenticated request failed");
   });
 
   // ── 1e. Refresh token rotation ──
-  test("POST /refresh với cookie → trả về accessToken mới + refreshToken mới", async () => {
+  test("POST /refresh with cookie → returns new accessToken + new refreshToken", async () => {
     const rawToken = extractRefreshToken(refreshCookie);
-    assert.ok(rawToken, "Không extract được refreshToken từ cookie");
+    assert.ok(rawToken, "Could not extract refreshToken from cookie");
 
     const { status, body, setCookie } = await request(`${AUTH}/refresh`, {
       method: "POST",
       headers: { Cookie: `refreshToken=${rawToken}` },
     });
 
-    assert.equal(status, 200, `Refresh thất bại: ${JSON.stringify(body)}`);
-    assert.ok(body.accessToken, "thiếu accessToken mới");
+    assert.equal(status, 200, `Refresh failed: ${JSON.stringify(body)}`);
+    assert.ok(body.accessToken, "missing new accessToken");
 
-    // Token mới phải khác token cũ
-    assert.notEqual(body.accessToken, accessToken, "accessToken phải được rotate");
+    // The new token must differ from the old token.
+    assert.notEqual(body.accessToken, accessToken, "accessToken must be rotated");
 
     const newCookie = setCookie;
     const newRawToken = extractRefreshToken(newCookie);
-    assert.ok(newRawToken, "thiếu refreshToken mới trong cookie");
-    assert.notEqual(newRawToken, rawToken, "refreshToken phải được rotate");
+    assert.ok(newRawToken, "missing new refreshToken in cookie");
+    assert.notEqual(newRawToken, rawToken, "refreshToken must be rotated");
 
-    // ── Token cũ phải bị revoke ──
+    // ── Old token must be revoked ──
     const { status: reuseStatus } = await request(`${AUTH}/refresh`, {
       method: "POST",
       headers: { Cookie: `refreshToken=${rawToken}` },
     });
-    assert.equal(reuseStatus, 403, "Token cũ sau rotation phải bị revoke (403)");
+    assert.equal(reuseStatus, 403, "Old token after rotation must be revoked (403)");
 
-    // Update để dùng ở bước logout
+    // Update for the logout step.
     accessToken   = body.accessToken;
     refreshCookie = newCookie;
   });
 
   // ── 1f. Logout ──
-  test("POST /logout → 200, sau đó refreshToken không còn dùng được", async () => {
+  test("POST /logout → 200, then refreshToken is no longer usable", async () => {
     const rawToken = extractRefreshToken(refreshCookie);
 
     const { status, body } = await request(`${AUTH}/logout`, {
@@ -152,19 +152,19 @@ describe("Integration: Auth flow", () => {
     });
 
     assert.equal(status, 200);
-    assert.ok(body.message, "thiếu message sau logout");
+    assert.ok(body.message, "missing message after logout");
 
-    // Thử refresh sau logout → phải fail
+    // Try refreshing after logout; it must fail.
     const { status: afterLogout } = await request(`${AUTH}/refresh`, {
       method: "POST",
       headers: { Cookie: `refreshToken=${rawToken}` },
     });
-    assert.equal(afterLogout, 403, "refresh sau logout phải trả 403");
+    assert.equal(afterLogout, 403, "refresh after logout must return 403");
   });
 });
 
-// ─── 2. PRODUCT CRUD QUA GATEWAY ────────────────────────────────────────────
-describe("Integration: Product CRUD qua Gateway", () => {
+// ─── 2. PRODUCT CRUD THROUGH GATEWAY ───────────────────────────────────────
+describe("Integration: Product CRUD through Gateway", () => {
   let token = null;
   let pid   = null;
 
@@ -174,10 +174,10 @@ describe("Integration: Product CRUD qua Gateway", () => {
       body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
     });
     token = body.accessToken;
-    assert.ok(token, "Không lấy được token để chạy product tests");
+    assert.ok(token, "Could not get token to run product tests");
   });
 
-  test("GET /api/products → 200 (không có token sẽ fail → token phải hợp lệ)", async () => {
+  test("GET /api/products → 200 (without token it fails, so token must be valid)", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -185,7 +185,7 @@ describe("Integration: Product CRUD qua Gateway", () => {
     assert.ok(Array.isArray(body.products));
   });
 
-  test("GET /api/products?page=1&limit=3 → trả về tối đa 3 item", async () => {
+  test("GET /api/products?page=1&limit=3 → returns at most 3 items", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products?page=1&limit=3`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -193,7 +193,7 @@ describe("Integration: Product CRUD qua Gateway", () => {
     assert.ok(body.products.length <= 3);
   });
 
-  test("POST /api/products → tạo product mới → 201", async () => {
+  test("POST /api/products → creates new product → 201", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -205,12 +205,12 @@ describe("Integration: Product CRUD qua Gateway", () => {
         image: "https://example.com/img.jpg",
       }),
     });
-    assert.equal(status, 201, `Tạo product thất bại: ${JSON.stringify(body)}`);
-    assert.ok(body._id, "thiếu _id trong response");
+    assert.equal(status, 201, `Create product failed: ${JSON.stringify(body)}`);
+    assert.ok(body._id, "missing _id in response");
     pid = body._id;
   });
 
-  test("GET /api/products/:id → lấy product vừa tạo", async () => {
+  test("GET /api/products/:id → gets newly created product", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -219,10 +219,10 @@ describe("Integration: Product CRUD qua Gateway", () => {
     assert.equal(body.name, "Integration Test Product");
     assert.equal(body.price, 150000);
     assert.equal(body.stock, 100);
-    assert.ok("description" in body, "thiếu field description");
+    assert.ok("description" in body, "missing description field");
   });
 
-  test("PATCH /api/products/:id → cập nhật price", async () => {
+  test("PATCH /api/products/:id → updates price", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}` },
@@ -233,15 +233,15 @@ describe("Integration: Product CRUD qua Gateway", () => {
     assert.equal(body.name, "Integration Test Product Updated");
   });
 
-  test("GET /api/products/:id sau PATCH → phản ánh dữ liệu mới (cache invalidated)", async () => {
+  test("GET /api/products/:id after PATCH → reflects new data (cache invalidated)", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     assert.equal(status, 200);
-    assert.equal(body.price, 200000, "Cache không được invalidate sau update");
+    assert.equal(body.price, 200000, "Cache was not invalidated after update");
   });
 
-  test("DELETE /api/products/:id → xóa thành công → 200", async () => {
+  test("DELETE /api/products/:id → deletes successfully → 200", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
@@ -250,11 +250,11 @@ describe("Integration: Product CRUD qua Gateway", () => {
     assert.ok(body.message);
   });
 
-  test("GET /api/products/:id sau xóa → 404", async () => {
+  test("GET /api/products/:id after delete → 404", async () => {
     const { status } = await request(`${GATEWAY}/api/products/${pid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    assert.equal(status, 404, "Product sau xóa vẫn còn truy cập được");
+    assert.equal(status, 404, "Product remains accessible after delete");
   });
 });
 
@@ -268,22 +268,22 @@ describe("Integration: Order flow + stock reservation", () => {
   const ORDER_QTY = 3;
 
   before(async () => {
-    // Login để lấy token và userId
+    // Log in to get token and userId.
     const { body } = await request(`${AUTH}/login`, {
       method: "POST",
       body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
     });
     token = body.accessToken;
-    assert.ok(token, "Không lấy được token");
+    assert.ok(token, "Could not get token");
 
-    // Decode JWT để lấy userId (JWT là base64, không cần verify ở đây)
+    // Decode JWT to get userId. It is base64 and does not need verification here.
     const payload = JSON.parse(
       Buffer.from(token.split(".")[1], "base64url").toString("utf8")
     );
     userId = payload.userId || payload.id || payload._id;
-    assert.ok(userId, "Không lấy được userId từ JWT");
+    assert.ok(userId, "Could not get userId from JWT");
 
-    // Tạo product test với stock cố định
+    // Create a test product with fixed stock.
     const { body: p } = await request(`${PRODUCT}/`, {
       method: "POST",
       body: JSON.stringify({
@@ -294,17 +294,17 @@ describe("Integration: Order flow + stock reservation", () => {
       }),
     });
     productId = p._id;
-    assert.ok(productId, "Không tạo được product để test order");
+    assert.ok(productId, "Could not create product for order test");
   });
 
   after(async () => {
-    // Cleanup: xóa product nếu còn
+    // Cleanup: delete product if it still exists.
     if (productId) {
       await request(`${PRODUCT}/${productId}`, { method: "DELETE" }).catch(() => {});
     }
   });
 
-  test("POST /api/orders → tạo đơn hàng thành công, stock bị trừ", async () => {
+  test("POST /api/orders → creates order successfully and deducts stock", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -315,24 +315,24 @@ describe("Integration: Order flow + stock reservation", () => {
       }),
     });
 
-    assert.equal(status, 201, `Tạo order thất bại: ${JSON.stringify(body)}`);
-    assert.ok(body._id, "thiếu _id trong order response");
-    assert.equal(body.userID, userId, "userID không khớp");
-    assert.ok(typeof body.total === "number" && body.total > 0, "total phải > 0");
+    assert.equal(status, 201, `Create order failed: ${JSON.stringify(body)}`);
+    assert.ok(body._id, "missing _id in order response");
+    assert.equal(body.userID, userId, "userID does not match");
+    assert.ok(typeof body.total === "number" && body.total > 0, "total must be > 0");
     assert.ok(Array.isArray(body.products) && body.products.length > 0);
     assert.equal(body.address, "123 Integration Test Street");
     orderId = body._id;
 
-    // Verify stock đã bị trừ
+    // Verify stock was deducted.
     const { body: updatedProduct } = await request(`${PRODUCT}/${productId}`);
     assert.equal(
       updatedProduct.stock,
       STOCK - ORDER_QTY,
-      `Stock phải là ${STOCK - ORDER_QTY} sau khi reserve ${ORDER_QTY} items`
+      `Stock must be ${STOCK - ORDER_QTY} after reserving ${ORDER_QTY} items`
     );
   });
 
-  test("GET /api/orders/:id → lấy order vừa tạo", async () => {
+  test("GET /api/orders/:id → gets newly created order", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders/${orderId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -342,39 +342,39 @@ describe("Integration: Order flow + stock reservation", () => {
     assert.ok(Array.isArray(body.products));
   });
 
-  test("GET /api/orders?userID=xxx → filter theo userID", async () => {
+  test("GET /api/orders?userID=xxx → filters by userID", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders?userID=${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     assert.equal(status, 200);
     assert.ok(Array.isArray(body));
     const found = body.find((o) => o._id === orderId);
-    assert.ok(found, "Không tìm thấy order trong kết quả filter theo userID");
+    assert.ok(found, "Order was not found in results filtered by userID");
   });
 
-  test("DELETE /api/orders/:id → xóa đơn, stock được hoàn trả", async () => {
+  test("DELETE /api/orders/:id → deletes order and restores stock", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders/${orderId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    assert.equal(status, 200, `Xóa order thất bại: ${JSON.stringify(body)}`);
+    assert.equal(status, 200, `Delete order failed: ${JSON.stringify(body)}`);
     assert.equal(body.success, true);
 
-    // Verify stock được hoàn trả về ban đầu
+    // Verify stock was restored to the original value.
     const { body: restoredProduct } = await request(`${PRODUCT}/${productId}`);
     assert.equal(
       restoredProduct.stock,
       STOCK,
-      `Stock phải được hoàn trả về ${STOCK} sau khi hủy đơn`
+      `Stock must be restored to ${STOCK} after canceling the order`
     );
 
-    orderId = null; // đã xóa, không cần cleanup
+    orderId = null; // deleted, no cleanup needed
   });
 });
 
-// ─── 4. STOCK ROLLBACK KHI ĐẶT HÀNG THẤT BẠI ──────────────────────────────
-describe("Integration: Stock rollback khi order thất bại", () => {
+// ─── 4. STOCK ROLLBACK WHEN ORDER FAILS ────────────────────────────────────
+describe("Integration: Stock rollback when order fails", () => {
   let token      = null;
   let userId     = null;
   let productAId = null;
@@ -391,7 +391,7 @@ describe("Integration: Stock rollback khi order thất bại", () => {
     );
     userId = payload.userId || payload.id || payload._id;
 
-    // Tạo product A (đủ hàng)
+    // Create product A with enough stock.
     const { body: pA } = await request(`${PRODUCT}/`, {
       method: "POST",
       body: JSON.stringify({ name: "Rollback Product A", price: 10000, stock: STOCK_A, category: [] }),
@@ -405,7 +405,7 @@ describe("Integration: Stock rollback khi order thất bại", () => {
     }
   });
 
-  test("đặt hàng với 1 product hợp lệ + 1 product không tồn tại → 400, stock A không bị thay đổi", async () => {
+  test("order with 1 valid product + 1 nonexistent product → 400, stock A remains unchanged", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -413,24 +413,24 @@ describe("Integration: Stock rollback khi order thất bại", () => {
         userID: userId,
         address: "Rollback Test Street",
         products: [
-          { productID: productAId, num: 2 },         // hợp lệ
-          { productID: "nonexistent-product", num: 1 }, // không tồn tại → gây rollback
+          { productID: productAId, num: 2 },             // valid
+          { productID: "nonexistent-product", num: 1 },  // nonexistent, triggers rollback
         ],
       }),
     });
 
-    assert.equal(status, 400, `Expected 400 nhưng nhận ${status}: ${JSON.stringify(body)}`);
+    assert.equal(status, 400, `Expected 400 but received ${status}: ${JSON.stringify(body)}`);
 
-    // Stock A phải được rollback về ban đầu
+    // Stock A must be rolled back to the original value.
     const { body: checkA } = await request(`${PRODUCT}/${productAId}`);
     assert.equal(
       checkA.stock,
       STOCK_A,
-      `Stock A phải được rollback về ${STOCK_A} nhưng nhận ${checkA.stock}`
+      `Stock A must be rolled back to ${STOCK_A}, but received ${checkA.stock}`
     );
   });
 
-  test("đặt hàng vượt stock → 400, stock không bị trừ", async () => {
+  test("order exceeding stock → 400, stock is not deducted", async () => {
     const { status } = await request(`${GATEWAY}/api/orders`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -443,7 +443,7 @@ describe("Integration: Stock rollback khi order thất bại", () => {
     assert.equal(status, 400);
 
     const { body: checkA } = await request(`${PRODUCT}/${productAId}`);
-    assert.equal(checkA.stock, STOCK_A, "Stock phải không đổi khi order thất bại");
+    assert.equal(checkA.stock, STOCK_A, "Stock must remain unchanged when order fails");
   });
 });
 
@@ -457,22 +457,22 @@ describe("Integration: Gateway auth guard", () => {
   ];
 
   for (const route of protectedRoutes) {
-    test(`${route.method} ${route.path} không có token → 401`, async () => {
+    test(`${route.method} ${route.path} without token → 401`, async () => {
       const { status } = await request(`${GATEWAY}${route.path}`, {
         method: route.method,
         body: route.method !== "GET" ? JSON.stringify({}) : undefined,
       });
-      assert.equal(status, 401, `${route.method} ${route.path} phải trả 401 khi không có token`);
+      assert.equal(status, 401, `${route.method} ${route.path} must return 401 without token`);
     });
   }
 
-  test("Auth routes /api/auth/login và /api/auth/register KHÔNG bị chặn bởi JWT", async () => {
-    // Những route này phải bypass JWT guard (theo code gateway)
+  test("Auth routes /api/auth/login and /api/auth/register are NOT blocked by JWT", async () => {
+    // These routes must bypass the JWT guard according to the gateway code.
     const { status: loginStatus } = await request(`${GATEWAY}/api/auth/login`, {
       method: "POST",
       body: JSON.stringify({ email: "test@test.com", password: "wrong" }),
     });
-    // 401 từ auth service (sai mật khẩu) — KHÔNG phải 403 từ gateway JWT
-    assert.equal(loginStatus, 401, "Login route phải bypass JWT guard, nhận error từ auth service");
+    // 401 comes from the auth service for wrong password, not 403 from gateway JWT.
+    assert.equal(loginStatus, 401, "Login route must bypass JWT guard and receive error from auth service");
   });
 });

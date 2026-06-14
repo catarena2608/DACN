@@ -1,6 +1,6 @@
 const authService = require("../services/auth.service");
 
-// Cấu hình cookie dùng chung
+// Shared cookie configuration.
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -34,7 +34,7 @@ exports.refresh = async (req, res) => {
 
     const { accessToken, refreshToken } = await authService.refreshToken(token);
 
-    // Set lại cookie mới (Rotation)
+    // Set the rotated refresh-token cookie.
     res.cookie("refreshToken", refreshToken, COOKIE_OPTIONS);
     res.json({ accessToken });
   } catch (err) {

@@ -1,36 +1,37 @@
 # dacn-app
 
-Đồ án này tập trung vào triển khai một ứng dụng e-commerce dạng microservices lên Kubernetes theo mô hình staging -> production. Mục tiêu là xây dựng một môi trường staging đủ gần production, chạy các bài kiểm thử đáng tin cậy, sau đó mới cho phép cùng một image được dùng ở production.
+This project focuses on deploying an e-commerce microservices application to Kubernetes with a staging-to-production workflow. The goal is to build a staging environment that is close enough to production, validate it with reliable tests, and promote only the same validated image tag to production.
 
-GitHub Actions chỉ đảm nhận CI: build, test, security scan, smoke test local, build image và push image lên GHCR. CD sẽ do FluxCD đảm nhận bằng cách reconcile Kubernetes cluster từ Git state.
+GitHub Actions is responsible for CI: build, test, security scan, local smoke test, image build, and pushing images to GHCR. CD is handled by FluxCD, which reconciles the Kubernetes cluster from Git state.
 
-Luận điểm trung tâm của đồ án: hiệu năng và độ ổn định production không phải là trách nhiệm riêng của Dev hoặc Ops. Một release chỉ nên đến tay người dùng cuối khi code, hạ tầng, CI, GitOps, staging validation và kiểm thử tải cùng chứng minh rằng image tag đó đủ an toàn.
+The central argument of the project is that production performance and reliability are not the responsibility of Development or Operations alone. A release should reach users only when code, infrastructure, CI, GitOps, staging validation, and load testing all provide evidence that the image tag is safe enough.
 
-Repo này là `dacn-app`: nơi chứa source code, Dockerfile, Helm chart ứng dụng, CI workflow, test script và tài liệu kỹ thuật. Desired state cho FluxCD nên nằm ở repo riêng sau này, ví dụ `dacn-gitops`.
+This repository is the app repository. It contains source code, Dockerfiles, the Helm chart, CI workflows, test scripts, and technical documentation. Desired cluster state should live in a separate GitOps repository.
 
-## Hiện Trạng Hệ Thống
+## Current System
 
-| Thành phần | Vị trí | Vai trò |
+| Component | Path | Role |
 | --- | --- | --- |
 | Frontend | `apps/frontend` | React + Vite web client |
-| Gateway | `apps/gateway` | API gateway, route `/api/*` về service nội bộ |
-| Auth service | `services/backend-auth` | Đăng ký, đăng nhập, JWT, refresh token |
-| Product service | `services/backend-product` | Product catalog, cache Redis, xử lý stock RPC |
-| Order service | `services/backend-order` | Quản lý order, gọi Product qua RabbitMQ RPC |
-| RabbitMQ | `deploy/compose`, `deploy/helm/dacn` | Message broker cho luồng order-product |
-| Nginx | `deploy/nginx` | Reverse proxy local, rate limit cơ bản |
-| Helm chart | `deploy/helm/dacn` | Kubernetes application chart cho FluxCD/Helm |
-| Docker Compose | `deploy/compose` | Chạy full stack local |
-| Load test | `tests/load` | k6 scripts, gồm staging 10k user scenario |
-| Shared packages | `packages` | Khu vực cho shared code sau này |
-| Automation scripts | `scripts` | Khu vực cho helper scripts sau này |
-| Deployment plan | `docs/deployment-plan.md` | Kế hoạch triển khai lab, FluxCD, observability và tech stack |
-| Performance plan | `docs/performance-evaluation.md` | Kế hoạch đánh giá hiệu năng và tiêu chí production readiness |
-| DevOps readiness | `docs/devops-production-readiness.md` | Luận điểm Dev/Ops shared responsibility và quality gate trước production |
+| Gateway | `apps/gateway` | API gateway, routes `/api/*` to internal services |
+| Auth service | `services/backend-auth` | Registration, login, JWT, refresh token |
+| Product service | `services/backend-product` | Product catalog, Redis cache, stock RPC handling |
+| Order service | `services/backend-order` | Order management, Product RPC through RabbitMQ |
+| RabbitMQ | `deploy/compose`, `deploy/helm/dacn` | Message broker for order-product flow |
+| Nginx | `deploy/nginx` | Local reverse proxy and basic rate limit |
+| Helm chart | `deploy/helm/dacn` | Kubernetes application chart for Helm/FluxCD |
+| Docker Compose | `deploy/compose` | Local full-stack runtime |
+| Load tests | `tests/load` | k6 scripts, including the staging 10k-user scenario |
+| Shared packages | `packages` | Future shared code area |
+| Automation scripts | `scripts` | Helper scripts |
+| Deployment plan | `docs/deployment-plan.md` | Lab, FluxCD, observability, and stack plan |
+| Performance plan | `docs/performance-evaluation.md` | Performance evaluation and production readiness criteria |
+| DevOps readiness | `docs/devops-production-readiness.md` | Shared Dev/Ops responsibility and quality gate |
+| Production gate | `docs/production-readiness-gate.md` | Executable staging validation and PASS/FAIL release decision |
 
-Những thành phần như Payment và observability stack đầy đủ là roadmap nếu phát triển tiếp. Order và RabbitMQ hiện đã có trong source/deploy ở mức phục vụ luồng đặt hàng.
+Payment, full observability, ranking, and admin services are roadmap items. Order and RabbitMQ already exist in source/deployment assets for the current order flow.
 
-## Cấu Trúc Repo
+## Repository Structure
 
 ```text
 apps/
@@ -43,16 +44,12 @@ services/
   backend-order/
 
 packages/
-  README.md
-
 deploy/
   compose/
   helm/dacn/
   nginx/
 
 scripts/
-  README.md
-
 tests/
   load/
   smoke/
@@ -66,34 +63,34 @@ docs/
   archive/
 ```
 
-## Môi Trường
+## Environments
 
-| Môi trường | Mục đích | Config chính | Cách triển khai |
+| Environment | Purpose | Main config | Deployment |
 | --- | --- | --- | --- |
-| Local | Developer chạy trên máy cá nhân | `deploy/compose/docker-compose.yml`, `.env.dev` | Docker Compose |
-| Dev Kubernetes | Kiểm tra Helm nội bộ | `values.yaml` + `values-dev.yaml` | Manual/Flux tùy giai đoạn |
-| Staging | Mô phỏng production, chạy validation gate | `values.yaml` + `values-staging.yaml` | FluxCD |
-| Production | Người dùng cuối | `values.yaml` + `values-prod.yaml` | FluxCD + approval theo GitOps |
+| Local | Developer machine | `deploy/compose/docker-compose.yml`, `.env.dev` | Docker Compose |
+| Dev Kubernetes | Internal Helm validation | `values.yaml` + `values-dev.yaml` | Manual or Flux |
+| Staging | Production-like validation gate | `values.yaml` + `values-staging.yaml` | FluxCD |
+| Production | End-user environment | `values.yaml` + `values-prod.yaml` | FluxCD + approval |
 
-## Chạy Local
+## Run Locally
 
-Tạo file env local từ file mẫu:
+Create local env files from examples:
 
-```powershell
-Copy-Item services/backend-auth/.env.example services/backend-auth/.env.dev
-Copy-Item services/backend-product/.env.example services/backend-product/.env.dev
-Copy-Item services/backend-order/.env.example services/backend-order/.env.dev
-Copy-Item apps/gateway/.env.example apps/gateway/.env.dev
-Copy-Item apps/frontend/.env.example apps/frontend/.env.dev
+```bash
+cp services/backend-auth/.env.example services/backend-auth/.env.dev
+cp services/backend-product/.env.example services/backend-product/.env.dev
+cp services/backend-order/.env.example services/backend-order/.env.dev
+cp apps/gateway/.env.example apps/gateway/.env.dev
+cp apps/frontend/.env.example apps/frontend/.env.dev
 ```
 
-Chạy full stack:
+Run the full stack:
 
 ```bash
 docker compose -f deploy/compose/docker-compose.yml up --build
 ```
 
-Endpoint chính:
+Main endpoints:
 
 ```text
 Frontend:       http://localhost
@@ -103,32 +100,32 @@ Product health: http://localhost/api/products/health
 Order health:   http://localhost/api/order/health
 ```
 
-## Helm Và FluxCD
+## Helm And FluxCD
 
-Kế hoạch triển khai lab đầy đủ nằm ở:
+Full lab deployment details:
 
 ```text
 docs/deployment-plan.md
 ```
 
-Chart chính:
+Main chart:
 
 ```text
 deploy/helm/dacn
 ```
 
-Values theo môi trường:
+Environment values:
 
 ```text
-values.yaml           # Base chung, không chứa secret thật
+values.yaml           # Shared base, no real secrets
 values-dev.yaml       # Dev Kubernetes
-values-staging.yaml   # Staging, external MongoDB/Redis
-values-prod.yaml      # Production, external MongoDB/Redis, TLS
+values-staging.yaml   # Staging, external data services
+values-prod.yaml      # Production, external data services, TLS
 ```
 
-GitHub Actions không chạy `helm upgrade` vào cluster. Sau này FluxCD sẽ theo dõi Git repository hoặc một repo GitOps riêng, rồi tự reconcile staging/production.
+GitHub Actions does not run `helm upgrade` against the cluster. FluxCD watches Git state and reconciles staging/production.
 
-Render thử staging local:
+Render staging locally:
 
 ```bash
 helm template dacn ./deploy/helm/dacn \
@@ -136,32 +133,32 @@ helm template dacn ./deploy/helm/dacn \
   --set global.imageTag=sha-xxxxxxx
 ```
 
-Luồng GitOps mong muốn:
+Target GitOps flow:
 
 ```text
 CI build image -> push GHCR tag sha-xxxxxxx
-Update GitOps state cho staging imageTag=sha-xxxxxxx
+Update GitOps staging imageTag=sha-xxxxxxx
 FluxCD sync staging
-Run staging validation workflow
-Nếu pass: promote cùng image tag sang production GitOps state
+Run staging validation
+If validation passes: promote the same image tag to production GitOps state
 FluxCD sync production
 ```
 
-Phần cập nhật GitOps state có thể làm thủ công trong đồ án, hoặc sau này tự động hóa bằng Image Automation Controller của FluxCD.
+Updating GitOps state can be manual for the project demo or automated later with Flux Image Automation Controller.
 
-## Quản Lý Secret
+## Secret Management
 
-Không commit `.env.dev`, password, token, kubeconfig, database URI thật vào repo.
+Do not commit `.env.dev`, passwords, tokens, kubeconfig files, or real database URIs.
 
-Repo chỉ giữ `.env.example`. Secret thật nên nằm ở:
+The repository should keep only `.env.example`. Real secrets should be managed with:
 
 ```text
 Kubernetes Secret
 Flux SOPS/Sealed Secrets/External Secrets
-GitHub Secrets cho test credentials và k6 token
+GitHub Secrets for test credentials and k6 token
 ```
 
-Ví dụ Kubernetes Secret staging:
+Example staging secrets:
 
 ```bash
 kubectl -n dacn-staging create secret generic dacn-auth-staging-secrets \
@@ -181,7 +178,7 @@ kubectl -n dacn-staging create secret generic dacn-gateway-staging-secrets \
   --from-literal=JWT_SECRET='same-as-auth-jwt-secret'
 ```
 
-Production dùng secret riêng:
+Production uses separate secret names:
 
 ```text
 dacn-auth-prod-secrets
@@ -190,58 +187,52 @@ dacn-order-prod-secrets
 dacn-gateway-prod-secrets
 ```
 
-## CI Và Staging Validation
+## CI And Staging Validation
 
-| Workflow | Mục đích |
+| Workflow | Purpose |
 | --- | --- |
-| `.github/workflows/ci-main.yml` | Build, test, audit, Docker Compose smoke test, push image lên GHCR |
+| `.github/workflows/ci-main.yml` | Build, test, audit, Docker Compose smoke test, push images to GHCR |
 | `.github/workflows/security.yml` | Gitleaks, npm audit, SonarQube |
-| `.github/workflows/staging-validation.yml` | Helm render/lint, smoke test staging, k6 10k user test |
+| `.github/workflows/staging-validation.yml` | Helm render/lint, staging smoke test, k6 10k-user test |
 
-Không có workflow production deploy trong GitHub Actions. Production deployment thuộc về FluxCD.
+There is no production deploy workflow in GitHub Actions. Production deployment belongs to FluxCD.
 
-Triết lý quality gate và trách nhiệm chung Dev/Ops được mô tả chi tiết tại:
-
-```text
-docs/devops-production-readiness.md
-```
-
-Luồng đề xuất:
+Recommended release flow:
 
 ```text
 Pull request
   -> build/test/audit
   -> merge main
   -> build image + push GHCR
-  -> FluxCD sync staging từ GitOps state
+  -> FluxCD sync staging from GitOps state
   -> run staging validation
-  -> nếu pass thì promote image tag trong GitOps state production
+  -> if pass, promote image tag in production GitOps state
   -> FluxCD sync production
 ```
 
-## Staging Validation 10.000 User
+## Staging 10,000-User Validation
 
-Kế hoạch đánh giá hiệu năng chi tiết nằm ở:
+Detailed performance plan:
 
 ```text
 docs/performance-evaluation.md
 ```
 
-Script chính:
+Main script:
 
 ```text
 tests/load/staging-10000-users.js
 ```
 
-Kịch bản:
+Scenario:
 
 ```text
-10 phút ramp lên 10.000 virtual users
-20 phút giữ tải 10.000 virtual users
-5 phút ramp down
+10 minutes ramp up to 10,000 virtual users
+20 minutes hold at 10,000 virtual users
+5 minutes ramp down
 ```
 
-Threshold:
+Thresholds:
 
 ```text
 http_req_failed < 1%
@@ -250,51 +241,52 @@ p99 latency < 1500ms
 checks pass rate > 99%
 ```
 
-Chạy bằng k6 Cloud trong workflow staging validation:
+Run through k6 Cloud in staging validation:
 
-```bash
-k6 cloud tests/load/staging-10000-users.js
+```text
+.github/workflows/staging-validation.yml
 ```
 
-Các secret/variable cần:
+Required secrets/variables:
 
 ```text
 STAGING_TEST_EMAIL
 STAGING_TEST_PASSWORD
 K6_CLOUD_TOKEN
-STAGING_PRODUCT_ID          # optional GitHub variable
+STAGING_PRODUCT_ID
 ```
 
-Lưu ý: 10.000 user thật không nên chạy bằng một GitHub-hosted runner đơn lẻ. Workflow dùng k6 Cloud để tải được phân phối và kết quả đáng tin cậy hơn. Nếu không dùng k6 Cloud, cần self-hosted/distributed load generators.
+When running `staging-validation.yml` manually, pass `staging_host` if the staging ingress is reached through an IP address but routes by host name, for example `staging.dacn.local`.
+
+Running 10,000 real VUs from a single GitHub-hosted runner is not recommended. Use k6 Cloud or distributed/self-hosted load generators.
 
 ## Production Promotion
 
-Production chỉ dùng image tag đã pass staging validation. Không build lại image cho production.
+Production should use only an image tag that passed staging validation. Do not rebuild a separate production image.
 
-Với FluxCD, promotion nên là một thay đổi Git:
+With FluxCD, promotion should be a Git change:
 
 ```text
-staging imageTag=sha-xxxxxxx đã pass
-production imageTag=sha-xxxxxxx được cập nhật qua PR/review
-FluxCD phát hiện thay đổi
-FluxCD sync production
+staging imageTag=sha-xxxxxxx passed
+production imageTag=sha-xxxxxxx updated through PR/review
+FluxCD detects the change
+FluxCD reconciles production
 ```
 
-Trong đồ án, production promotion có thể trình bày bằng PR thủ công vào GitOps state. Trong hệ thống hoàn chỉnh, có thể dùng Flux Image Automation Controller hoặc một repo GitOps riêng.
+For the project demo, production promotion can be presented as a manual PR into GitOps state. A complete system can later use Flux Image Automation Controller.
 
-## Tiêu Chí Đạt
+## Acceptance Criteria
 
-Một bản build được xem là đủ điều kiện production khi:
+A build is production-ready when:
 
 ```text
-CI build pass
-npm audit không có high/critical vulnerability
-secret scan pass
-Docker Compose smoke test pass
-Helm staging render/lint pass
-FluxCD đã sync staging thành công
-Staging smoke test pass
-k6 10k user test pass thresholds
-Production image tag được promote qua GitOps review
-FluxCD sync production
+CI build/test pass
+npm audit has no high/critical vulnerability
+Docker Compose smoke test passes
+Helm render/lint passes
+FluxCD syncs staging successfully
+staging smoke test passes
+production-readiness gate summary is PASS
+k6 10k-user test meets thresholds
+production image tag is promoted through GitOps review
 ```

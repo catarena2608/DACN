@@ -1,7 +1,7 @@
 import "./layout.scss";
 
 const Layout = () => {
-  return <div className="layout">Trang chính (đã login)</div>;
+  return <div className="layout">Main page (logged in)</div>;
 };
 
 export default Layout;

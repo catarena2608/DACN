@@ -16,7 +16,7 @@ const User = mongoose.model("UserAuth", userSchema, "userAuth");
 // ================== METHODS ==================
 
 exports.createUser = async (user) => {
-  return User.create(user); // không cần truyền _id nữa
+  return User.create(user); // _id is generated automatically.
 };
 
 exports.findUserByEmail = async (email) => {
