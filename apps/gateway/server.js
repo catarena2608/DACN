@@ -7,6 +7,13 @@
   const rateLimiter = require("./middleware/rateLimiter");
 
   const app = express();
+  const accessLogEnabled = process.env.GATEWAY_ACCESS_LOG === "true";
+  const proxyAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: Number(process.env.GATEWAY_PROXY_MAX_SOCKETS || 256),
+    maxFreeSockets: Number(process.env.GATEWAY_PROXY_MAX_FREE_SOCKETS || 64),
+    timeout: Number(process.env.GATEWAY_PROXY_SOCKET_TIMEOUT_MS || 30000),
+  });
 
   app.use(cookieParser());
   app.use(
@@ -81,9 +88,9 @@
     // 2. Preserve path and query.
     const targetUrl = new URL(targetBase + cleanPath);
 
-    console.log(
-      `[Gateway 🚀] ${req.method} ${req.originalUrl} → ${targetUrl.href}`
-    );
+    if (accessLogEnabled) {
+      console.log(`[Gateway] ${req.method} ${req.originalUrl} -> ${targetUrl.href}`);
+    }
 
     // 3. Copy headers.
     const headers = { ...req.headers };
@@ -99,6 +106,7 @@
     const options = {
       method: req.method,
       headers,
+      agent: proxyAgent,
     };
 
     const proxyReq = http.request(targetUrl, options, (proxyRes) => {
