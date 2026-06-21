@@ -114,6 +114,8 @@ services:
       AUTH_SERVICE_URL: http://auth:3001
       PRODUCT_SERVICE_URL: http://product:3002
       ORDER_SERVICE_URL: http://order:3003
+      SERVICE_NAME: gateway-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
     envFromSecrets: []
     resources:
       limits:

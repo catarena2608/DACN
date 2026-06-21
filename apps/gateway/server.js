@@ -1,4 +1,5 @@
   require("dotenv").config();
+  require("./tracing/tracing");
   const express = require("express");
   const http = require("http");
   const cors = require("cors");
