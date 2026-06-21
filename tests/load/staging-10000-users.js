@@ -19,15 +19,20 @@ const profiles = {
     { duration: "5m", target: 100 },
     { duration: "1m", target: 0 },
   ],
+  "1k": [
+    { duration: "1m", target: 1000 },
+    { duration: "3m", target: 1000 },
+    { duration: "1m", target: 0 },
+  ],
   "10k": [
-    { duration: "10m", target: 10000 },
-    { duration: "20m", target: 10000 },
-    { duration: "5m", target: 0 },
+    { duration: "1m", target: 10000 },
+    { duration: "3m", target: 10000 },
+    { duration: "1m", target: 0 },
   ],
 };
 
 if (!profiles[LOAD_PROFILE]) {
-  throw new Error(`Unsupported LOAD_PROFILE=${LOAD_PROFILE}. Use smoke, baseline, or 10k.`);
+  throw new Error(`Unsupported LOAD_PROFILE=${LOAD_PROFILE}. Use smoke, baseline, 1k, or 10k.`);
 }
 
 function buildHeaders(extra = {}) {
