@@ -71,6 +71,9 @@ services:
     healthCheck:
       path: /
       port: 3000
+      timeoutSeconds: 5
+      periodSeconds: 10
+      failureThreshold: 12
     envFromSecrets:
       - dacn-gateway-staging-secrets
     resources:
