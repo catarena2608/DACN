@@ -51,10 +51,28 @@ spec:
             httpGet:
               path: {{ $service.healthCheck.path }}
               port: http
+            {{- with $service.healthCheck.timeoutSeconds }}
+            timeoutSeconds: {{ . }}
+            {{- end }}
+            {{- with $service.healthCheck.periodSeconds }}
+            periodSeconds: {{ . }}
+            {{- end }}
+            {{- with $service.healthCheck.failureThreshold }}
+            failureThreshold: {{ . }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: {{ $service.healthCheck.path }}
               port: http
+            {{- with $service.healthCheck.timeoutSeconds }}
+            timeoutSeconds: {{ . }}
+            {{- end }}
+            {{- with $service.healthCheck.periodSeconds }}
+            periodSeconds: {{ . }}
+            {{- end }}
+            {{- with $service.healthCheck.failureThreshold }}
+            failureThreshold: {{ . }}
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml $service.resources | nindent 12 }}
