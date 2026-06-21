@@ -16,6 +16,7 @@ RUN_NODE_TESTS="${RUN_NODE_TESTS:-true}"
 RUN_CONTRACT="${RUN_CONTRACT:-true}"
 RUN_INTEGRATION="${RUN_INTEGRATION:-true}"
 RUN_K6_SMOKE="${RUN_K6_SMOKE:-false}"
+RUN_1K_LOAD="${RUN_1K_LOAD:-false}"
 RUN_10K_LOAD="${RUN_10K_LOAD:-false}"
 
 EXPECTED_IMAGE_TAG="${EXPECTED_IMAGE_TAG:-}"
@@ -54,6 +55,7 @@ Optional switches:
   RUN_CONTRACT=true|false         default true
   RUN_INTEGRATION=true|false      default true
   RUN_K6_SMOKE=true|false         default false
+  RUN_1K_LOAD=true|false          default false
   RUN_10K_LOAD=true|false         default false
 
 Artifacts:
@@ -194,6 +196,35 @@ write_summary() {
       echo "| $status | $name |"
     done
     echo
+    if [[ -f "$ARTIFACT_DIR/staging-load-summary.json" ]]; then
+      echo "## K6 Load Summary"
+      echo
+      jq -r '
+        .metrics as $m |
+        [
+          ["Metric", "Value"],
+          ["---", "---"],
+          ["Max VUs configured", (($m.vus_max.values.value // "n/a") | tostring)],
+          ["Max VUs observed", (($m.vus.values.max // "n/a") | tostring)],
+          ["HTTP requests", (($m.http_reqs.values.count // "n/a") | tostring)],
+          ["Requests/sec", (($m.http_reqs.values.rate // 0) | tostring)],
+          ["Iterations", (($m.iterations.values.count // "n/a") | tostring)],
+          ["HTTP failure rate", (((($m.http_req_failed.values.rate // 0) * 100) | tostring) + "%")],
+          ["Checks pass rate", (((($m.checks.values.rate // 0) * 100) | tostring) + "%")],
+          ["Avg latency", ((($m.http_req_duration.values.avg // 0) | tostring) + " ms")],
+          ["Median latency", ((($m.http_req_duration.values.med // 0) | tostring) + " ms")],
+          ["p90 latency", ((($m.http_req_duration.values["p(90)"] // 0) | tostring) + " ms")],
+          ["p95 latency", ((($m.http_req_duration.values["p(95)"] // 0) | tostring) + " ms")],
+          ["Max latency", ((($m.http_req_duration.values.max // 0) | tostring) + " ms")],
+          ["Threshold failed rate < 1%", (($m.http_req_failed.thresholds["rate<0.01"].ok // false) | tostring)],
+          ["Threshold p95 < 800 ms", (($m.http_req_duration.thresholds["p(95)<800"].ok // false) | tostring)],
+          ["Threshold p99 < 1500 ms", (($m.http_req_duration.thresholds["p(99)<1500"].ok // false) | tostring)],
+          ["Threshold checks > 99%", (($m.checks.thresholds["rate>0.99"].ok // false) | tostring)]
+        ] | .[] | "| \(.[0]) | \(.[1]) |"
+      ' "$ARTIFACT_DIR/staging-load-summary.json" \
+        || echo "K6 summary was unavailable."
+      echo
+    fi
     echo "## Tested Images"
     echo
     echo "| Deployment | Container | Image |"
@@ -223,7 +254,7 @@ require_command curl
 require_command flux
 require_command node
 
-if [[ "$RUN_K6_SMOKE" == "true" || "$RUN_10K_LOAD" == "true" ]]; then
+if [[ "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" ]]; then
   require_command k6
 fi
 
@@ -233,7 +264,7 @@ if [[ -n "$EXPECTED_IMAGE_TAG" ]] && is_placeholder_value "$EXPECTED_IMAGE_TAG";
   exit 2
 fi
 
-if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOKE" == "true" || "$RUN_10K_LOAD" == "true" ]]; then
+if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" ]]; then
   if [[ -z "${SEED_EMAIL:-}" || -z "${SEED_PASSWORD:-}" ]]; then
     echo "SEED_EMAIL and SEED_PASSWORD are required for contract/integration/load validation." >&2
     echo "Use a dedicated staging test account, not a real user account." >&2
@@ -246,8 +277,8 @@ if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOK
   fi
 fi
 
-if [[ "$RUN_10K_LOAD" == "true" && -z "$STAGING_URL" ]]; then
-  echo "STAGING_URL is required when RUN_10K_LOAD=true." >&2
+if [[ "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" ]] && [[ -z "$STAGING_URL" ]]; then
+  echo "STAGING_URL is required when RUN_1K_LOAD=true or RUN_10K_LOAD=true." >&2
   echo "Use the production-like ingress URL, not a local port-forward." >&2
   exit 2
 fi
@@ -330,6 +361,16 @@ if [[ "$RUN_K6_SMOKE" == "true" ]]; then
 
   run_shell_step "k6 smoke profile" \
     "cd '$ARTIFACT_DIR' && BASE_URL='http://127.0.0.1:$GATEWAY_LOCAL_PORT' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' LOAD_PROFILE=smoke k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+fi
+
+if [[ "$RUN_1K_LOAD" == "true" ]]; then
+  host_env=""
+  if [[ -n "$STAGING_HOST" ]]; then
+    host_env="HOST_HEADER='$STAGING_HOST'"
+  fi
+
+  run_shell_step "k6 1k production-like load test" \
+    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' LOAD_PROFILE=1k k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
 fi
 
 if [[ "$RUN_10K_LOAD" == "true" ]]; then
