@@ -125,7 +125,7 @@ services:
     autoscaling:
       enabled: false
     healthCheck:
-      path: /api/health
+      path: /
       port: 3000
 
   frontend:
