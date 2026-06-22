@@ -13,6 +13,7 @@
     keepAlive: true,
     maxSockets: Number(process.env.GATEWAY_PROXY_MAX_SOCKETS || 256),
     maxFreeSockets: Number(process.env.GATEWAY_PROXY_MAX_FREE_SOCKETS || 64),
+    keepAliveMsecs: Number(process.env.GATEWAY_PROXY_KEEP_ALIVE_MSECS || 30000),
     timeout: Number(process.env.GATEWAY_PROXY_SOCKET_TIMEOUT_MS || 30000),
   });
 
@@ -95,7 +96,19 @@
 
     // 3. Copy headers.
     const headers = { ...req.headers };
-    delete headers.host;
+    for (const header of [
+      "host",
+      "connection",
+      "keep-alive",
+      "proxy-authenticate",
+      "proxy-authorization",
+      "te",
+      "trailer",
+      "transfer-encoding",
+      "upgrade",
+    ]) {
+      delete headers[header];
+    }
 
     // Attach decoded user information for downstream services.
     if (req.user) {
