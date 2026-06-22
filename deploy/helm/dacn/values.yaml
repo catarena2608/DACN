@@ -116,6 +116,11 @@ services:
       ORDER_SERVICE_URL: http://order:3003
       SERVICE_NAME: gateway-service
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
+      OTEL_TRACES_SAMPLER_ARG: "0.01"
+      GATEWAY_PROXY_MAX_SOCKETS: "2048"
+      GATEWAY_PROXY_MAX_FREE_SOCKETS: "512"
+      GATEWAY_PROXY_KEEP_ALIVE_MSECS: "30000"
+      GATEWAY_PROXY_SOCKET_TIMEOUT_MS: "60000"
     envFromSecrets: []
     resources:
       limits:
