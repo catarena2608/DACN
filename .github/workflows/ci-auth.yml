@@ -40,6 +40,6 @@ jobs:
       - run: npm test --if-present -- --passWithNoTests
         working-directory: services/backend-auth
 
-      - name: npm audit (non-blocking for lab)
+      - name: npm audit
         run: npm audit --audit-level=high --omit=dev || true
         working-directory: services/backend-auth

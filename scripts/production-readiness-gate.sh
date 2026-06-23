@@ -16,10 +16,14 @@ RUN_NODE_TESTS="${RUN_NODE_TESTS:-true}"
 RUN_CONTRACT="${RUN_CONTRACT:-true}"
 RUN_INTEGRATION="${RUN_INTEGRATION:-true}"
 RUN_K6_SMOKE="${RUN_K6_SMOKE:-false}"
+RUN_K6_SUITE="${RUN_K6_SUITE:-${RUN_LOAD_SUITE:-false}}"
+RUN_LOAD_TEST="${RUN_LOAD_TEST:-false}"
 RUN_1K_LOAD="${RUN_1K_LOAD:-false}"
 RUN_10K_LOAD="${RUN_10K_LOAD:-false}"
 RUN_SPIKE_LOAD="${RUN_SPIKE_LOAD:-false}"
 RUN_SOAK_LOAD="${RUN_SOAK_LOAD:-false}"
+LOAD_TEST_PROFILE="${LOAD_TEST_PROFILE:-1k}"
+LOAD_RECOVERY_WAIT="${LOAD_RECOVERY_WAIT:-60}"
 
 EXPECTED_IMAGE_TAG="${EXPECTED_IMAGE_TAG:-}"
 STAGING_URL="${STAGING_URL:-}"
@@ -57,10 +61,14 @@ Optional switches:
   RUN_CONTRACT=true|false         default true
   RUN_INTEGRATION=true|false      default true
   RUN_K6_SMOKE=true|false         default false
+  RUN_K6_SUITE=true|false         run k6 smoke, load, spike, and soak in one gate
+  RUN_LOAD_TEST=true|false        run LOAD_TEST_PROFILE, default false
+  LOAD_TEST_PROFILE=1k|10k        default 1k
   RUN_1K_LOAD=true|false          default false
   RUN_10K_LOAD=true|false         default false
   RUN_SPIKE_LOAD=true|false       default false
   RUN_SOAK_LOAD=true|false        default false
+  LOAD_RECOVERY_WAIT=seconds      default 60
 
 Artifacts:
   ARTIFACT_DIR=$ARTIFACT_DIR
@@ -175,6 +183,64 @@ ensure_gateway_port_forward() {
   start_port_forward gateway "$STAGING_NAMESPACE" svc/gateway "$GATEWAY_LOCAL_PORT" 3000
 }
 
+truthy() {
+  [[ "${1:-false}" == "true" || "${1:-false}" == "1" || "${1:-false}" == "yes" ]]
+}
+
+if truthy "$RUN_K6_SUITE"; then
+  RUN_K6_SMOKE=true
+  RUN_LOAD_TEST=true
+  RUN_SPIKE_LOAD=true
+  RUN_SOAK_LOAD=true
+fi
+
+if truthy "$RUN_LOAD_TEST"; then
+  case "$LOAD_TEST_PROFILE" in
+    1k) RUN_1K_LOAD=true ;;
+    10k) RUN_10K_LOAD=true ;;
+    *)
+      echo "Unsupported LOAD_TEST_PROFILE=$LOAD_TEST_PROFILE. Use 1k or 10k." >&2
+      exit 2
+      ;;
+  esac
+fi
+
+k6_requested() {
+  truthy "$RUN_K6_SMOKE" || truthy "$RUN_1K_LOAD" || truthy "$RUN_10K_LOAD" || truthy "$RUN_SPIKE_LOAD" || truthy "$RUN_SOAK_LOAD"
+}
+
+k6_ingress_requested() {
+  truthy "$RUN_1K_LOAD" || truthy "$RUN_10K_LOAD" || truthy "$RUN_SPIKE_LOAD" || truthy "$RUN_SOAK_LOAD"
+}
+
+k6_host_env() {
+  if [[ -n "$STAGING_HOST" ]]; then
+    printf "HOST_HEADER='%s'" "$STAGING_HOST"
+  fi
+}
+
+k6_recovery_wait() {
+  local previous_profile="$1"
+  if [[ "$LOAD_RECOVERY_WAIT" == "0" ]]; then
+    return 0
+  fi
+
+  run_shell_step "recovery wait after $previous_profile" \
+    "sleep '$LOAD_RECOVERY_WAIT'; kubectl -n '$STAGING_NAMESPACE' wait --for=condition=Available deployment --all --timeout='$KUBE_WAIT_TIMEOUT'; kubectl -n '$STAGING_NAMESPACE' get pods -o wide"
+}
+
+run_k6_ingress_profile() {
+  local profile="$1"
+  local name="$2"
+  local script_file="$3"
+  local extra_env="${4:-}"
+  local host_env
+  host_env="$(k6_host_env)"
+
+  run_shell_step "$name" \
+    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SUMMARY_FILE='staging-$profile-load-summary.json' $extra_env k6 run '$REPO_ROOT/tests/load/$script_file'"
+}
+
 write_summary() {
   local summary_file="$ARTIFACT_DIR/production-readiness-summary.md"
   {
@@ -200,8 +266,17 @@ write_summary() {
       echo "| $status | $name |"
     done
     echo
-    if [[ -f "$ARTIFACT_DIR/staging-load-summary.json" ]]; then
-      echo "## K6 Load Summary"
+    local k6_summary
+    local k6_summary_count=0
+    for k6_summary in "$ARTIFACT_DIR"/staging-*-load-summary.json "$ARTIFACT_DIR"/staging-load-summary.json; do
+      [[ -f "$k6_summary" ]] || continue
+      if [[ "$k6_summary_count" -eq 0 ]]; then
+        echo "## K6 Load Summary"
+        echo
+      fi
+      k6_summary_count=$((k6_summary_count + 1))
+      echo
+      echo "### $(basename "$k6_summary")"
       echo
       jq -r '
         .metrics as $m |
@@ -225,10 +300,10 @@ write_summary() {
           ["Threshold p99 < 1500 ms", (($m.http_req_duration.thresholds["p(99)<1500"].ok // false) | tostring)],
           ["Threshold checks > 99%", (($m.checks.thresholds["rate>0.99"].ok // false) | tostring)]
         ] | .[] | "| \(.[0]) | \(.[1]) |"
-      ' "$ARTIFACT_DIR/staging-load-summary.json" \
+      ' "$k6_summary" \
         || echo "K6 summary was unavailable."
       echo
-    fi
+    done
     echo "## Tested Images"
     echo
     echo "| Deployment | Container | Image |"
@@ -258,7 +333,7 @@ require_command curl
 require_command flux
 require_command node
 
-if [[ "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]]; then
+if k6_requested; then
   require_command k6
 fi
 
@@ -268,7 +343,7 @@ if [[ -n "$EXPECTED_IMAGE_TAG" ]] && is_placeholder_value "$EXPECTED_IMAGE_TAG";
   exit 2
 fi
 
-if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]]; then
+if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" ]] || k6_requested; then
   if [[ -z "${SEED_EMAIL:-}" || -z "${SEED_PASSWORD:-}" ]]; then
     echo "SEED_EMAIL and SEED_PASSWORD are required for contract/integration/load validation." >&2
     echo "Use a dedicated staging test account, not a real user account." >&2
@@ -281,7 +356,7 @@ if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOK
   fi
 fi
 
-if [[ "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]] && [[ -z "$STAGING_URL" ]]; then
+if k6_ingress_requested && [[ -z "$STAGING_URL" ]]; then
   echo "STAGING_URL is required when RUN_1K_LOAD=true, RUN_10K_LOAD=true, RUN_SPIKE_LOAD=true, or RUN_SOAK_LOAD=true." >&2
   echo "Use the production-like ingress URL, not a local port-forward." >&2
   exit 2
@@ -364,47 +439,39 @@ if [[ "$RUN_K6_SMOKE" == "true" ]]; then
   fi
 
   run_shell_step "k6 smoke profile" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='http://127.0.0.1:$GATEWAY_LOCAL_PORT' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' LOAD_PROFILE=smoke k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+    "cd '$ARTIFACT_DIR' && BASE_URL='http://127.0.0.1:$GATEWAY_LOCAL_PORT' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' SUMMARY_FILE='staging-smoke-load-summary.json' k6 run '$REPO_ROOT/tests/load/smoke.js'"
+
+  if k6_ingress_requested; then
+    k6_recovery_wait "k6 smoke profile"
+  fi
 fi
 
 if [[ "$RUN_1K_LOAD" == "true" ]]; then
-  host_env=""
-  if [[ -n "$STAGING_HOST" ]]; then
-    host_env="HOST_HEADER='$STAGING_HOST'"
-  fi
+  run_k6_ingress_profile "1k" "k6 1k production-like load test" "load.js" "LOAD_TEST_PROFILE='1k'"
 
-  run_shell_step "k6 1k production-like load test" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' LOAD_PROFILE=1k k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+  if [[ "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]]; then
+    k6_recovery_wait "k6 1k load test"
+  fi
 fi
 
 if [[ "$RUN_10K_LOAD" == "true" ]]; then
-  host_env=""
-  if [[ -n "$STAGING_HOST" ]]; then
-    host_env="HOST_HEADER='$STAGING_HOST'"
-  fi
+  run_k6_ingress_profile "10k" "k6 10k production-like load test" "load.js" "LOAD_TEST_PROFILE='10k'"
 
-  run_shell_step "k6 10k production-like load test" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' LOAD_PROFILE=10k k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+  if [[ "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]]; then
+    k6_recovery_wait "k6 10k load test"
+  fi
 fi
 
 if [[ "$RUN_SPIKE_LOAD" == "true" ]]; then
-  host_env=""
-  if [[ -n "$STAGING_HOST" ]]; then
-    host_env="HOST_HEADER='$STAGING_HOST'"
-  fi
+  run_k6_ingress_profile "spike" "k6 spike load test" "spike.js" "SPIKE_TARGET='${SPIKE_TARGET:-1000}'"
 
-  run_shell_step "k6 spike load test" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SPIKE_TARGET='${SPIKE_TARGET:-1000}' LOAD_PROFILE=spike k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+  if [[ "$RUN_SOAK_LOAD" == "true" ]]; then
+    k6_recovery_wait "k6 spike test"
+  fi
 fi
 
 if [[ "$RUN_SOAK_LOAD" == "true" ]]; then
-  host_env=""
-  if [[ -n "$STAGING_HOST" ]]; then
-    host_env="HOST_HEADER='$STAGING_HOST'"
-  fi
-
-  run_shell_step "k6 soak load test" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SOAK_TARGET='${SOAK_TARGET:-300}' SOAK_DURATION='${SOAK_DURATION:-30m}' LOAD_PROFILE=soak k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+  run_k6_ingress_profile "soak" "k6 soak load test" "soak.js" "SOAK_TARGET='${SOAK_TARGET:-300}' SOAK_DURATION='${SOAK_DURATION:-30m}'"
 fi
 
 run_shell_step "app restart budget during validation" \

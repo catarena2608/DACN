@@ -2,7 +2,7 @@
 
 This project focuses on deploying an e-commerce microservices application to Kubernetes with a staging-to-production workflow. The goal is to build a staging environment that is close enough to production, validate it with reliable tests, and promote only the same validated image tag to production.
 
-GitHub Actions is responsible for CI: build, test, security scan, local smoke test, image build, and pushing images to GHCR. CD is handled by FluxCD, which reconciles the Kubernetes cluster from Git state.
+GitHub Actions is responsible for CI: Gitleaks secret scan, build, test, npm audit, local smoke test, image build, and pushing images to GHCR. CD is handled by FluxCD, which reconciles the Kubernetes cluster from Git state.
 
 The central argument of the project is that production performance and reliability are not the responsibility of Development or Operations alone. A release should reach users only when code, infrastructure, CI, GitOps, staging validation, and load testing all provide evidence that the image tag is safe enough.
 
@@ -191,8 +191,7 @@ dacn-gateway-prod-secrets
 
 | Workflow | Purpose |
 | --- | --- |
-| `.github/workflows/ci-main.yml` | Build, service tests, Docker Compose smoke test, push images to GHCR |
-| `.github/workflows/security.yml` | Gitleaks, npm audit, SonarQube |
+| `.github/workflows/ci-main.yml` | Gitleaks, build, service tests, npm audit, Docker Compose smoke test, push changed images to GHCR |
 
 There is no production deploy workflow in GitHub Actions. Production deployment belongs to FluxCD.
 
@@ -200,7 +199,7 @@ Recommended release flow:
 
 ```text
 Pull request
-  -> build/test/audit
+  -> secret scan + build/test/audit
   -> merge main
   -> build image + push GHCR
   -> FluxCD sync staging from GitOps state
@@ -217,18 +216,21 @@ Detailed performance plan:
 docs/performance-evaluation.md
 ```
 
-Main script:
+Main k6 scripts:
 
 ```text
-tests/load/staging-10000-users.js
+tests/load/smoke.js
+tests/load/load.js
+tests/load/spike.js
+tests/load/soak.js
 ```
 
-Scenario:
+Load scenario:
 
 ```text
-10 minutes ramp up to 10,000 virtual users
-20 minutes hold at 10,000 virtual users
-5 minutes ramp down
+1 minute ramp up
+3 minutes hold
+1 minute ramp down
 ```
 
 Thresholds:
@@ -282,7 +284,8 @@ A build is production-ready when:
 
 ```text
 CI build/test pass
-npm audit has no high/critical vulnerability
+Gitleaks secret scan passes
+npm audit report is generated
 Docker Compose smoke test passes
 Helm render/lint passes
 FluxCD syncs staging successfully
