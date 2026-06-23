@@ -7,6 +7,7 @@ router.get("/", async (req, res) => {
   const healthcheck = {
     uptime: process.uptime(),
     message: "OK",
+    release: "demo-ci-cd",
     timestamp: Date.now(),
     services: {
         database: "disconnected",
