@@ -8,7 +8,7 @@ The project does not need to start with a managed cloud Kubernetes platform. The
 
 ```text
 Developer pushes code
-GitHub Actions build/test/security scan
+GitHub Actions Gitleaks/build/test/npm audit
 Images are pushed to GHCR
 FluxCD syncs staging from Git state
 Staging validation runs smoke tests and k6 load tests
