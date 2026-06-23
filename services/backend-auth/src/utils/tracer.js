@@ -1,9 +1,7 @@
-// utils/tracer.js
 const api = require('@opentelemetry/api');
 const tracer = api.trace.getTracer('auth-service');
 
 module.exports = {
-  // Hàm helper để wrapper logic
   runWithSpan: async (name, fn) => {
     return await tracer.startActiveSpan(name, async (span) => {
       try {

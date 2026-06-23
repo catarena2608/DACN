@@ -10,9 +10,7 @@ const detailSchema = new mongoose.Schema({
 });
 
 const Detail = mongoose.model("Detail", detailSchema, "detail");
-// ================== METHODS ==================
 
-// Export all helpers in one object.
 module.exports = {
   Detail,
   findDetailById: (id)=>{

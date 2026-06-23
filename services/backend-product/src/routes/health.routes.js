@@ -15,12 +15,10 @@ router.get("/", async (req, res) => {
   };
 
   try {
-    // Check MongoDB.
     if (mongoose.connection.readyState === 1) {
         healthcheck.services.database = "connected";
     }
 
-    // Check Redis.
     const redisPing = await redis.ping();
     if (redisPing === "PONG") {
         healthcheck.services.redis = "connected";
@@ -34,4 +32,3 @@ router.get("/", async (req, res) => {
 });
 
 module.exports = router;
-

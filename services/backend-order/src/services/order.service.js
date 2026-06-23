@@ -26,8 +26,6 @@ async function clearOrderListCache() {
   await deleteCacheKeys(keys);
 }
 
-// ================== GET ==================
-
 exports.getOrder = async (query) => {
   const cacheKey = `orders:${JSON.stringify(query)}`;
   const lockKey = `lock:${cacheKey}`;
@@ -83,8 +81,6 @@ exports.getOrder = async (query) => {
   }
 };
 
-// ================== GET BY ID ==================
-
 exports.getOrderById = async (id) => {
   const cacheKey = `order:${id}`;
   const lockKey = `lock:${cacheKey}`;
@@ -129,8 +125,6 @@ exports.getOrderById = async (id) => {
     await releaseLock(lockKey, token);
   }
 };
-
-// ================== CREATE ==================
 
 exports.addOrder = async ({ userID, products, address }) => {
   return await runWithSpan("order.service.add_order", async (span) => {
@@ -193,8 +187,6 @@ exports.addOrder = async ({ userID, products, address }) => {
     }
   });
 };
-
-// ================== DELETE ==================
 
 exports.deleteOrder = async (orderID) => {
   return await runWithSpan("order.service.delete_order", async (span) => {

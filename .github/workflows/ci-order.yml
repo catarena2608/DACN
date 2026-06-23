@@ -1,4 +1,4 @@
-name: CI — order service
+name: CI - order service
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test:
-    name: order — lint / test / audit
+    name: order - lint / test / audit
     runs-on: ubuntu-latest
 
     steps:

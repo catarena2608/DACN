@@ -24,7 +24,6 @@ app.use(cookieParser());
 app.use("/health", healthRoutes);
 app.use("/", authRoutes);
 
-// ================== MONGOOSE CONNECT ==================
 const MONGO_URI = process.env.URI;
 
 async function connectDB() {
@@ -32,7 +31,6 @@ async function connectDB() {
   console.log("MongoDB connected");
 }
 
-// ================== SEED DATA ==================
 async function seedData() {
   const count = await countUsers();
 
@@ -44,11 +42,11 @@ async function seedData() {
     const users = JSON.parse(raw);
 
     const hashedUsers = await Promise.all(
-        users.map(async (u) => ({
-            email: u.email,
-            name: u.name,
-            password: await bcrypt.hash(u.password, 10),
-        }))
+      users.map(async (u) => ({
+        email: u.email,
+        name: u.name,
+        password: await bcrypt.hash(u.password, 10),
+      }))
     );
 
     await insertManyUsers(hashedUsers);
@@ -59,7 +57,6 @@ async function seedData() {
   }
 }
 
-// ================== INIT ==================
 async function init() {
   await connectDB();
   await seedData();

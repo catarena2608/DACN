@@ -18,7 +18,7 @@ async function connectRabbit() {
     }
   );
 
-  console.log("✅ RabbitMQ connected");
+  console.log("RabbitMQ connected");
 
   return channel;
 }
