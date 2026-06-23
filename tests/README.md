@@ -23,4 +23,4 @@ export SEED_PASSWORD="<staging-test-password>"
 scripts/production-readiness-gate.sh
 ```
 
-The gate runs Kubernetes/Flux checks, service readiness checks, smoke tests, contract tests, integration tests, and optional k6 load tests. See `docs/production-readiness-gate.md`.
+The gate runs Kubernetes/Flux checks, service readiness checks, smoke tests, contract tests, integration tests, and optional k6 tests. The k6 files are split into smoke, load, spike, and soak scenarios. See `docs/production-readiness-gate.md`.
