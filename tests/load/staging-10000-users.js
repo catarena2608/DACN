@@ -8,6 +8,9 @@ const AUTH_PASSWORD = __ENV.AUTH_PASSWORD;
 const PRODUCT_ID = __ENV.PRODUCT_ID || "";
 const HOST_HEADER = __ENV.HOST_HEADER || "";
 const LOAD_PROFILE = __ENV.LOAD_PROFILE || "10k";
+const SPIKE_TARGET = Number(__ENV.SPIKE_TARGET || "1000");
+const SOAK_TARGET = Number(__ENV.SOAK_TARGET || "300");
+const SOAK_DURATION = __ENV.SOAK_DURATION || "30m";
 
 const profiles = {
   smoke: [
@@ -29,10 +32,22 @@ const profiles = {
     { duration: "3m", target: 10000 },
     { duration: "1m", target: 0 },
   ],
+  spike: [
+    { duration: "30s", target: 100 },
+    { duration: "30s", target: SPIKE_TARGET },
+    { duration: "2m", target: SPIKE_TARGET },
+    { duration: "30s", target: 100 },
+    { duration: "30s", target: 0 },
+  ],
+  soak: [
+    { duration: "2m", target: SOAK_TARGET },
+    { duration: SOAK_DURATION, target: SOAK_TARGET },
+    { duration: "2m", target: 0 },
+  ],
 };
 
 if (!profiles[LOAD_PROFILE]) {
-  throw new Error(`Unsupported LOAD_PROFILE=${LOAD_PROFILE}. Use smoke, baseline, 1k, or 10k.`);
+  throw new Error(`Unsupported LOAD_PROFILE=${LOAD_PROFILE}. Use smoke, baseline, 1k, 10k, spike, or soak.`);
 }
 
 function buildHeaders(extra = {}) {
@@ -114,7 +129,7 @@ export default function (data) {
 
 export function handleSummary(data) {
   return {
-    stdout: `Staging 10k load test summary: ${JSON.stringify(data.metrics, null, 2)}\n`,
+    stdout: `Staging ${LOAD_PROFILE} load test summary: ${JSON.stringify(data.metrics, null, 2)}\n`,
     "staging-load-summary.json": JSON.stringify(data, null, 2),
   };
 }

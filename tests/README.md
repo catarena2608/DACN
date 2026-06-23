@@ -14,8 +14,8 @@ contract/      API contract tests
 Use the production-readiness gate after an image tag has been deployed to staging:
 
 ```bash
-cd /home/catarena/DACN/DACN
-export KUBECONFIG=/home/catarena/DACN/k8s-automation/outputs/kubeconfig.yaml
+cd <application-repository>
+export KUBECONFIG=<path-to-kubeconfig>
 export EXPECTED_IMAGE_TAG="sha-xxxxxxx"
 export SEED_EMAIL="<staging-test-user>"
 export SEED_PASSWORD="<staging-test-password>"

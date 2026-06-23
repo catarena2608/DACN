@@ -35,11 +35,11 @@ Performance and stability under load
 
 ## Run The Gate
 
-From the application repository:
+The Kubernetes cluster is assumed to already exist. From the application repository, point `kubectl` to any kubeconfig that can access the staging cluster:
 
 ```bash
-cd /home/catarena/DACN/DACN
-export KUBECONFIG=/home/catarena/DACN/k8s-automation/outputs/kubeconfig.yaml
+cd <application-repository>
+export KUBECONFIG=<path-to-kubeconfig>
 export EXPECTED_IMAGE_TAG="sha-xxxxxxx"
 export SEED_EMAIL="<staging-test-user>"
 export SEED_PASSWORD="<staging-test-password>"
@@ -59,22 +59,12 @@ The most important file is:
 production-readiness-summary.md
 ```
 
-From the infrastructure automation repository, the same gate can be run with:
-
-```bash
-cd /home/catarena/DACN/k8s-automation
-EXPECTED_IMAGE_TAG="sha-xxxxxxx" \
-SEED_EMAIL="<staging-test-user>" \
-SEED_PASSWORD="<staging-test-password>" \
-make production-gate
-```
-
 ## Optional Ingress Smoke
 
-If the staging host is exposed through Traefik, test the ingress path too:
+If the staging host is exposed through an Ingress Controller, test the ingress path too:
 
 ```bash
-export STAGING_URL="http://20.212.59.12"
+export STAGING_URL="http://<staging-ingress-ip-or-domain>"
 export STAGING_HOST="staging.dacn.local"
 scripts/production-readiness-gate.sh
 ```
@@ -93,22 +83,12 @@ This proves the k6 script, login setup, and authenticated read path work before 
 
 This step requires `k6` on the machine running the gate.
 
-Makefile shortcut:
-
-```bash
-cd /home/catarena/DACN/k8s-automation
-EXPECTED_IMAGE_TAG="sha-xxxxxxx" \
-SEED_EMAIL="<staging-test-user>" \
-SEED_PASSWORD="<staging-test-password>" \
-make production-gate-k6-smoke
-```
-
 ## Production-Like 10,000 VU Test
 
 Run this only after smoke, contract, integration, Flux, and pod stability gates pass:
 
 ```bash
-export STAGING_URL="http://20.212.59.12"
+export STAGING_URL="http://<staging-ingress-ip-or-domain>"
 export STAGING_HOST="staging.dacn.local"
 export EXPECTED_IMAGE_TAG="sha-xxxxxxx"
 export SEED_EMAIL="<staging-test-user>"
@@ -116,16 +96,35 @@ export SEED_PASSWORD="<staging-test-password>"
 RUN_10K_LOAD=true scripts/production-readiness-gate.sh
 ```
 
-Makefile shortcut:
+## Spike And Soak Profiles
+
+Spike testing increases load suddenly to check whether the gateway, services, and Kubernetes runtime recover without errors or restarts.
 
 ```bash
-cd /home/catarena/DACN/k8s-automation
-EXPECTED_IMAGE_TAG="sha-xxxxxxx" \
-STAGING_URL="http://20.212.59.12" \
-STAGING_HOST="staging.dacn.local" \
-SEED_EMAIL="<staging-test-user>" \
-SEED_PASSWORD="<staging-test-password>" \
-make production-gate-10k
+export STAGING_URL="http://<staging-ingress-ip-or-domain>"
+export STAGING_HOST="staging.dacn.local"
+export EXPECTED_IMAGE_TAG="sha-xxxxxxx"
+export SEED_EMAIL="<staging-test-user>"
+export SEED_PASSWORD="<staging-test-password>"
+RUN_SPIKE_LOAD=true SPIKE_TARGET=1000 scripts/production-readiness-gate.sh
+```
+
+Soak testing is the long-running reliability test. It keeps steady load for a longer period to detect memory leaks, restart drift, latency drift, and resource saturation.
+
+```bash
+export STAGING_URL="http://<staging-ingress-ip-or-domain>"
+export STAGING_HOST="staging.dacn.local"
+export EXPECTED_IMAGE_TAG="sha-xxxxxxx"
+export SEED_EMAIL="<staging-test-user>"
+export SEED_PASSWORD="<staging-test-password>"
+RUN_SOAK_LOAD=true SOAK_TARGET=300 SOAK_DURATION=30m scripts/production-readiness-gate.sh
+```
+
+Defaults:
+
+```text
+spike: 100 -> 1,000 VUs, hold 2 minutes, then ramp down
+soak: 300 VUs for 30 minutes, then ramp down
 ```
 
 Thresholds are defined in `tests/load/staging-10000-users.js`:
@@ -140,7 +139,7 @@ checks pass rate > 99%
 For a lower-cost benchmark, use:
 
 ```bash
-BASE_URL="http://20.212.59.12" \
+BASE_URL="http://<staging-ingress-ip-or-domain>" \
 HOST_HEADER="staging.dacn.local" \
 AUTH_EMAIL="$SEED_EMAIL" \
 AUTH_PASSWORD="$SEED_PASSWORD" \
@@ -163,26 +162,33 @@ flux get helmreleases -A
 Application smoke through ingress:
 
 ```bash
-curl -H "Host: staging.dacn.local" http://20.212.59.12/
-curl -H "Host: staging.dacn.local" http://20.212.59.12/api/health
-curl -H "Host: staging.dacn.local" http://20.212.59.12/api/auth/health
-curl -H "Host: staging.dacn.local" http://20.212.59.12/api/products/health
+curl -H "Host: staging.dacn.local" http://<staging-ingress-ip-or-domain>/
+curl -H "Host: staging.dacn.local" http://<staging-ingress-ip-or-domain>/api/health
+curl -H "Host: staging.dacn.local" http://<staging-ingress-ip-or-domain>/api/auth/health
+curl -H "Host: staging.dacn.local" http://<staging-ingress-ip-or-domain>/api/products/health
 ```
 
 Observability UI:
 
 ```bash
-cd /home/catarena/DACN/k8s-automation
-make monitoring-ui
+kubectl -n observability port-forward svc/kube-prometheus-stack-grafana 3000:80
+kubectl -n observability port-forward svc/kibana 5601:5601
+kubectl -n observability port-forward svc/jaeger-query 16686:16686
 ```
 
 Open:
 
 ```text
 Grafana     http://localhost:3000
-Prometheus  http://localhost:9090
 Kibana      http://localhost:5601
 Jaeger      http://localhost:16686
+```
+
+If direct Prometheus access is needed, find the Prometheus service name and port-forward it:
+
+```bash
+kubectl -n observability get svc | grep prometheus
+kubectl -n observability port-forward svc/<prometheus-service-name> 9090:<prometheus-service-port>
 ```
 
 ## Promotion Criteria

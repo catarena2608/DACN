@@ -187,13 +187,12 @@ dacn-order-prod-secrets
 dacn-gateway-prod-secrets
 ```
 
-## CI And Staging Validation
+## CI And CD Validation
 
 | Workflow | Purpose |
 | --- | --- |
-| `.github/workflows/ci-main.yml` | Build, test, audit, Docker Compose smoke test, push images to GHCR |
+| `.github/workflows/ci-main.yml` | Build, service tests, Docker Compose smoke test, push images to GHCR |
 | `.github/workflows/security.yml` | Gitleaks, npm audit, SonarQube |
-| `.github/workflows/staging-validation.yml` | Helm render/lint, staging smoke test, k6 10k-user test |
 
 There is no production deploy workflow in GitHub Actions. Production deployment belongs to FluxCD.
 
@@ -205,7 +204,7 @@ Pull request
   -> merge main
   -> build image + push GHCR
   -> FluxCD sync staging from GitOps state
-  -> run staging validation
+  -> run CD staging validation
   -> if pass, promote image tag in production GitOps state
   -> FluxCD sync production
 ```
@@ -241,24 +240,26 @@ p99 latency < 1500ms
 checks pass rate > 99%
 ```
 
-Run through k6 Cloud in staging validation:
+Run through the CD/staging gate after staging has reconciled:
 
-```text
-.github/workflows/staging-validation.yml
+```bash
+RUN_10K_LOAD=true scripts/production-readiness-gate.sh
 ```
 
 Required secrets/variables:
 
 ```text
-STAGING_TEST_EMAIL
-STAGING_TEST_PASSWORD
-K6_CLOUD_TOKEN
-STAGING_PRODUCT_ID
+EXPECTED_IMAGE_TAG
+STAGING_URL
+STAGING_HOST
+SEED_EMAIL
+SEED_PASSWORD
+PRODUCT_ID
 ```
 
-When running `staging-validation.yml` manually, pass `staging_host` if the staging ingress is reached through an IP address but routes by host name, for example `staging.dacn.local`.
+Set `STAGING_HOST` if the staging ingress is reached through an IP address but routes by host name, for example `staging.dacn.local`.
 
-Running 10,000 real VUs from a single GitHub-hosted runner is not recommended. Use k6 Cloud or distributed/self-hosted load generators.
+Running 10,000 real VUs from a single machine is not recommended. Use k6 Cloud or distributed/self-hosted load generators.
 
 ## Production Promotion
 

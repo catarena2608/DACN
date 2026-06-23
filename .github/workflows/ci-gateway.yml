@@ -1,4 +1,4 @@
-name: CI — gateway
+name: CI - gateway
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test:
-    name: gateway — lint / test / audit
+    name: gateway - lint / test / audit
     runs-on: ubuntu-latest
 
     steps:

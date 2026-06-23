@@ -20,7 +20,6 @@ productSchema.index({ category: 1 });
 
 const Product = mongoose.model("Product", productSchema, "product");
 
-// Export all helpers in one object.
 module.exports = {
   Product,
 

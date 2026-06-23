@@ -1,4 +1,4 @@
-name: CI — main (smoke test + push images)
+name: CI - main (fast staging candidate)
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
     secrets: inherit
 
   build:
-    name: Build & test — ${{ matrix.service.name }}
+    name: Build & test - ${{ matrix.service.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -63,7 +63,7 @@ jobs:
         working-directory: ${{ matrix.service.path }}
 
   smoke-test:
-    name: Smoke test (full stack)
+    name: Compose smoke test
     runs-on: ubuntu-latest
     needs: build
 
@@ -131,7 +131,6 @@ jobs:
         run: |
           docker compose up redis-cluster-init
           sleep 5
-          # Kiểm tra trực tiếp xem trạng thái có phải là 'ok' không
           STATE=$(docker compose exec -T redis-1 redis-cli cluster info | grep cluster_state | cut -d: -f2 | tr -d '\r')
           echo "Current Redis Cluster State: '$STATE'"
           if [ "$STATE" != "ok" ]; then
@@ -164,49 +163,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Run smoke tests
-        run: |
-          BASE="http://localhost:3000"
-          NGINX="http://localhost"
-          AUTH="http://localhost:3001"
-          PRODUCT="http://localhost:3002"
-          ORDER="http://localhost:3003"
-          FAIL=false
-
-          check() {
-            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 10 "$2" || echo "000")
-            if [ "$STATUS" = "$3" ]; then
-              echo "  PASS  $1 → $STATUS"
-            else
-              echo "  FAIL  $1 → $STATUS (expected $3)"
-              FAIL=true
-            fi
-          }
-
-          echo "── Gateway :3000 ──────────────────────────"
-          check "gateway /health"           "$BASE/api/health"             "200"
-          check "auth route"                "$AUTH/health"    "200"
-          check "product route"             "$PRODUCT/health" "200"
-          check "order route"               "$ORDER/health"   "200"
-
-          echo "── Nginx :80 ──────────────────────────────"
-          check "nginx → gateway → auth"    "$NGINX/api/auth/health"            "200"
-          check "nginx → gateway → product" "$NGINX/api/products/health"            "200"
-          check "nginx → gateway → order"   "$NGINX/api/order/health"           "200"
-          check "nginx → frontend"          "$NGINX/"                  "200"
-
-          echo "── Internal (docker exec) ─────────────────"
-          A=$(docker exec auth-service    curl -sf -o /dev/null -w "%{http_code}" http://localhost:3001/health || echo "000")
-          P=$(docker exec product-service curl -sf -o /dev/null -w "%{http_code}" http://localhost:3002/health || echo "000")
-          O=$(docker exec order-service   curl -sf -o /dev/null -w "%{http_code}" http://localhost:3003/health || echo "000")
-          [ "$A" = "200" ] && echo "  PASS  auth internal → $A"    || { echo "  FAIL  auth internal → $A";    FAIL=true; }
-          [ "$P" = "200" ] && echo "  PASS  product internal → $P" || { echo "  FAIL  product internal → $P"; FAIL=true; }
-          [ "$O" = "200" ] && echo "  PASS  order internal → $O"   || { echo "  FAIL  order internal → $O";   FAIL=true; }
-
-          [ "$FAIL" = "true" ] && exit 1
-          echo ""
-          echo "All smoke tests passed"
-
       - name: Run smoke tests (node:test)
         run: node --test tests/smoke/smoke.test.js
         env:
@@ -216,34 +172,16 @@ jobs:
           GATEWAY_URL: http://localhost:3000
           NGINX_URL:   http://localhost
 
-      - name: Run contract tests
-        run: node --test tests/contract/contract.test.js
-        env:
-          AUTH_URL:    http://localhost:3001
-          PRODUCT_URL: http://localhost:3002
-          ORDER_URL:   http://localhost:3003
-          GATEWAY_URL: http://localhost:3000
-
-      - name: Run integration tests
-        run: node --test tests/integration/integration.test.js
-        env:
-          AUTH_URL:       http://localhost:3001
-          PRODUCT_URL:    http://localhost:3002
-          ORDER_URL:      http://localhost:3003
-          GATEWAY_URL:    http://localhost:3000
-          SEED_EMAIL:     ${{ secrets.TEST_SEED_EMAIL }}
-          SEED_PASSWORD:  ${{ secrets.TEST_SEED_PASSWORD }}
-
       - name: Write job summary
         if: always()
         run: |
-          echo "## Smoke test — ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Smoke test - ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "| container | status | health |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|--------|" >> $GITHUB_STEP_SUMMARY
           for C in auth-service product-service order-service api-gateway frontend-ui nginx-proxy mongodb rabbitmq redis-1 redis-2 redis-3; do
-            ST=$(docker inspect $C --format='{{.State.Status}}'              2>/dev/null || echo "—")
-            HL=$(docker inspect $C --format='{{.State.Health.Status}}'       2>/dev/null || echo "—")
-            IC=$([ "$ST" = "running" ] && echo "✅" || echo "❌")
+            ST=$(docker inspect $C --format='{{.State.Status}}'              2>/dev/null || echo "-")
+            HL=$(docker inspect $C --format='{{.State.Health.Status}}'       2>/dev/null || echo "-")
+            IC=$([ "$ST" = "running" ] && echo "ok" || echo "fail")
             echo "| $IC $C | $ST | $HL |" >> $GITHUB_STEP_SUMMARY
           done
 
@@ -259,7 +197,7 @@ jobs:
         run: docker compose down -v --remove-orphans
 
   push-images:
-    name: Push — ${{ matrix.service.name }}
+    name: Push - ${{ matrix.service.name }}
     runs-on: ubuntu-latest
     needs: [smoke-test, security]
     permissions:
