@@ -90,7 +90,7 @@ In this project, the production gate includes:
 
 ```text
 CI build passes
-dependency/security scan passes
+Gitleaks secret scan passes
 Docker Compose smoke test passes
 Helm render/lint passes
 FluxCD syncs staging successfully
