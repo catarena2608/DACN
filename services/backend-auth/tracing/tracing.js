@@ -1,4 +1,3 @@
-// tracing/tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
@@ -24,7 +23,6 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
-// Đảm bảo đóng SDK khi app dừng
 process.on('SIGTERM', () => {
   sdk.shutdown().then(() => console.log('Tracing terminated'));
 });

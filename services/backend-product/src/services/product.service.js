@@ -25,33 +25,27 @@ async function clearProductListCache() {
   await deleteCacheKeys(keys);
 }
 
-// ================== GET ==================
 exports.getProducts = async (query) => {
   const key = `products:${JSON.stringify(query)}`;
   const lockKey = `lock:${key}`;
 
-  // 1. Check cache.
   const cached = await redis.get(key);
   if (cached) {
     return JSON.parse(cached);
   }
 
-  // 2. Try to acquire lock.
   const isLocked = await redis.set(lockKey, "1", "NX", "EX", 5);
 
   if (!isLocked) {
-    // Another request is already fetching the data; wait briefly.
     await sleep(100);
 
     const retry = await redis.get(key);
     if (retry) return JSON.parse(retry);
 
-    // Fallback if the cache is still empty.
     throw new Error("Server busy, retry");
   }
 
   try {
-    // Cache miss; query the database.
     const {
       category,
       name,
@@ -89,29 +83,24 @@ exports.getProducts = async (query) => {
       totalPages: Math.ceil(total / limit)
     };
 
-    // Set cache.
     const ttl = 60 + Math.floor(Math.random() * 20);
     await redis.set(key, JSON.stringify(result), "EX", ttl);
 
     return result;
   } finally {
-    // Release lock.
     await redis.del(lockKey);
   }
 };
 
-// ================== GET BY ID ==================
 exports.getProductById = async (id) => {
   const key = `product:${id}`;
   const lockKey = `lock:${key}`;
 
-  // 1. Check cache.
   const cached = await redis.get(key);
   if (cached) {
     return JSON.parse(cached);
   }
 
-  // 2. Try to acquire lock.
   const isLocked = await redis.set(lockKey, "1", "NX", "EX", 5);
 
   if (!isLocked) {
@@ -143,7 +132,6 @@ exports.getProductById = async (id) => {
   }
 };
 
-// ================== CREATE ==================
 exports.createProduct = async (data) => {
   const lastProduct = await productModel.findLastProduct();
 
@@ -157,26 +145,21 @@ exports.createProduct = async (data) => {
     ...data
   });
 
-  // Clear list cache.
   await clearProductListCache();
 
   return newProduct;
 };
 
-// ================== UPDATE ==================
 exports.updateProduct = async (id, data) => {
   const updated = await productModel.updateProduct(id, data);
 
-  // Clear detail cache.
   await redis.del(`product:${id}`);
 
-  // Clear all list cache entries.
   await clearProductListCache();
 
   return updated;
 };
 
-// ================== DELETE ==================
 exports.deleteProduct = async (id) => {
   await productModel.deleteProduct(id);
 
@@ -185,9 +168,6 @@ exports.deleteProduct = async (id) => {
   await clearProductListCache();
 };
 
-// ================== Lock + RabbitMQ ==================
-
-// ================== Reverse ==================
 exports.reserveStock = async (productID, quantity) => {
   const lockKey = `lock:product:${productID}`;
 
@@ -232,7 +212,6 @@ exports.reserveStock = async (productID, quantity) => {
   }
 };
 
-// ================== Release ==================
 exports.releaseStock = async (productID,quantity) => {
 
   const lockKey =`lock:product:${productID}`;

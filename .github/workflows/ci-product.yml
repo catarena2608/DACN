@@ -1,4 +1,4 @@
-name: CI — product service
+name: CI - product service
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test:
-    name: product — lint / test / audit
+    name: product - lint / test / audit
     runs-on: ubuntu-latest
 
     steps:

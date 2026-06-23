@@ -1,20 +1,3 @@
-/**
- * Contract Tests
- *
- * Goal: verify each API response shape (field names and types)
- * against what the frontend and other services expect.
- * This does not test business logic; it only tests the JSON shape.
- *
- * Environment variables:
- *   AUTH_URL      default http://localhost:3001
- *   PRODUCT_URL   default http://localhost:3002
- *   ORDER_URL     default http://localhost:3003
- *   GATEWAY_URL   default http://localhost:3000
- *
- * Seed user (from auth.json):
- *   email: nguyenhoa01@gmail.com / password: hoa123456
- */
-
 const { test, describe, before } = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -26,7 +9,6 @@ const GATEWAY = process.env.GATEWAY_URL  || "http://localhost:3000";
 const SEED_EMAIL    = process.env.SEED_EMAIL    || "nguyenhoa01@gmail.com";
 const SEED_PASSWORD = process.env.SEED_PASSWORD || "hoa123456";
 
-// ─── helpers ───────────────────────────────────────────────────────────────
 async function request(url, options = {}) {
   const res = await fetch(url, {
     ...options,
@@ -54,13 +36,10 @@ function assertObject(val, field) {
   assert.ok(val && typeof val === "object" && !Array.isArray(val), `${field} must be an object`);
 }
 
-// ─── Shared test state ─────────────────────────────────────────────────────
 let accessToken = null;
 let createdProductId = null;
 
-// ─── AUTH CONTRACT ──────────────────────────────────────────────────────────
 describe("Contract: Auth", () => {
-  // ── POST /login ──
   describe("POST /login", () => {
     test("response has accessToken (string) and sets refreshToken cookie", async () => {
       const { status, body, headers } = await request(`${AUTH}/login`, {
@@ -81,7 +60,7 @@ describe("Contract: Auth", () => {
       accessToken = body.accessToken;
     });
 
-    test("login with wrong password → 401 + message field", async () => {
+    test("login with wrong password -> 401 + message field", async () => {
       const { status, body } = await request(`${AUTH}/login`, {
         method: "POST",
         body: JSON.stringify({ email: SEED_EMAIL, password: "wrongpassword" }),
@@ -91,7 +70,7 @@ describe("Contract: Auth", () => {
       assertString(body.message, "message");
     });
 
-    test("login with nonexistent email → 401 + message field", async () => {
+    test("login with nonexistent email -> 401 + message field", async () => {
       const { status, body } = await request(`${AUTH}/login`, {
         method: "POST",
         body: JSON.stringify({ email: "ghost@nowhere.com", password: "x" }),
@@ -101,9 +80,8 @@ describe("Contract: Auth", () => {
     });
   });
 
-  // ── POST /register ──
   describe("POST /register", () => {
-    test("register duplicate email → 400 + message field", async () => {
+    test("register duplicate email -> 400 + message field", async () => {
       const { status, body } = await request(`${AUTH}/register`, {
         method: "POST",
         body: JSON.stringify({
@@ -118,25 +96,22 @@ describe("Contract: Auth", () => {
     });
   });
 
-  // ── POST /logout ──
   describe("POST /logout", () => {
-    test("logout without cookie → 200 (idempotent) + message field", async () => {
+    test("logout without cookie -> 200 (idempotent) + message field", async () => {
       const { status, body } = await request(`${AUTH}/logout`, { method: "POST" });
       assert.equal(status, 200);
       assert.ok("message" in body, "missing message field");
     });
   });
 
-  // ── POST /refresh ──
   describe("POST /refresh", () => {
-    test("refresh without cookie → 403 + message field", async () => {
+    test("refresh without cookie -> 403 + message field", async () => {
       const { status, body } = await request(`${AUTH}/refresh`, { method: "POST" });
       assert.equal(status, 403);
       assert.ok("message" in body, "missing message field");
     });
   });
 
-  // ── GET /health ──
   describe("GET /health", () => {
     test("shape: { uptime, message, timestamp, services: { database, redis } }", async () => {
       const { status, body } = await request(`${AUTH}/health`);
@@ -151,9 +126,7 @@ describe("Contract: Auth", () => {
   });
 });
 
-// ─── PRODUCT CONTRACT ───────────────────────────────────────────────────────
 describe("Contract: Product", () => {
-  // ── GET / (list) ──
   describe("GET / (product list)", () => {
     test("shape: { products[], total, page, totalPages }", async () => {
       const { status, body } = await request(`${PRODUCT}/`);
@@ -178,13 +151,13 @@ describe("Contract: Product", () => {
       assertNumber(p.stock, "stock");
     });
 
-    test("query ?page=1&limit=5 → returns the requested limit", async () => {
+    test("query ?page=1&limit=5 -> returns the requested limit", async () => {
       const { status, body } = await request(`${PRODUCT}/?page=1&limit=5`);
       assert.equal(status, 200);
       assert.ok(body.products.length <= 5, "returned product count exceeds limit=5");
     });
 
-    test("query ?name=xxx → still returns standard shape even with no result", async () => {
+    test("query ?name=xxx -> still returns standard shape even with no result", async () => {
       const { status, body } = await request(`${PRODUCT}/?name=xyzxyzxyz_notexist`);
       assert.equal(status, 200);
       assertArray(body.products, "products");
@@ -192,19 +165,17 @@ describe("Contract: Product", () => {
     });
   });
 
-  // ── GET /:id ──
   describe("GET /:id", () => {
-    test("nonexistent id → 404 + message field", async () => {
+    test("nonexistent id -> 404 + message field", async () => {
       const { status, body } = await request(`${PRODUCT}/notexistid`);
       assert.equal(status, 404);
       assert.ok("message" in body);
       assertString(body.message, "message");
     });
 
-    test("valid product → complete shape using id from list", async () => {
+    test("valid product -> complete shape using id from list", async () => {
       const { body: listBody } = await request(`${PRODUCT}/`);
       if (listBody.products.length === 0) {
-        // Create one product for the test.
         const { body: created } = await request(`${PRODUCT}/`, {
           method: "POST",
           body: JSON.stringify({ name: "Test Product", price: 100, stock: 10, category: ["test"] }),
@@ -220,14 +191,12 @@ describe("Contract: Product", () => {
       assert.ok("name"  in body, "missing name");
       assert.ok("price" in body, "missing price");
       assert.ok("stock" in body, "missing stock");
-      // description can be null from the detail model.
       assert.ok("description" in body, "missing description field, which may be null");
     });
   });
 
-  // ── POST / ──
   describe("POST / (create product)", () => {
-    test("create new product → 201 + returns object with _id", async () => {
+    test("create new product -> 201 + returns object with _id", async () => {
       const { status, body } = await request(`${PRODUCT}/`, {
         method: "POST",
         body: JSON.stringify({
@@ -243,15 +212,12 @@ describe("Contract: Product", () => {
       assert.ok("_id" in body, "missing _id in create response");
       assertString(body._id, "_id");
 
-      // cleanup
       await request(`${PRODUCT}/${body._id}`, { method: "DELETE" });
     });
   });
 
-  // ── PATCH /:id ──
   describe("PATCH /:id (update product)", () => {
-    test("update product → returns updated object with _id", async () => {
-      // Create a product to update.
+    test("update product -> returns updated object with _id", async () => {
       const { body: created } = await request(`${PRODUCT}/`, {
         method: "POST",
         body: JSON.stringify({ name: "To Update", price: 100, stock: 10, category: [] }),
@@ -265,14 +231,12 @@ describe("Contract: Product", () => {
       assert.equal(status, 200);
       assert.ok("_id" in body, "missing _id in update response");
 
-      // cleanup
       await request(`${PRODUCT}/${created._id}`, { method: "DELETE" });
     });
   });
 
-  // ── DELETE /:id ──
   describe("DELETE /:id", () => {
-    test("delete valid product → 200 + message field", async () => {
+    test("delete valid product -> 200 + message field", async () => {
       const { body: created } = await request(`${PRODUCT}/`, {
         method: "POST",
         body: JSON.stringify({ name: "To Delete", price: 10, stock: 1, category: [] }),
@@ -288,7 +252,6 @@ describe("Contract: Product", () => {
     });
   });
 
-  // ── GET /health ──
   describe("GET /health", () => {
     test("shape matches auth health", async () => {
       const { status, body } = await request(`${PRODUCT}/health`);
@@ -302,9 +265,7 @@ describe("Contract: Product", () => {
   });
 });
 
-// ─── ORDER CONTRACT ─────────────────────────────────────────────────────────
 describe("Contract: Order", () => {
-  // ── GET / ──
   describe("GET / (order list)", () => {
     test("returns an array, possibly empty", async () => {
       const { status, body } = await request(`${ORDER}/`);
@@ -312,7 +273,7 @@ describe("Contract: Order", () => {
       assertArray(body, "order list");
     });
 
-    test("query ?userID=xxx → still returns an array", async () => {
+    test("query ?userID=xxx -> still returns an array", async () => {
       const { status, body } = await request(`${ORDER}/?userID=fakeuserid`);
       assert.equal(status, 200);
       assertArray(body, "filtered order list");
@@ -331,7 +292,6 @@ describe("Contract: Order", () => {
       assertArray(o.products, "order.products");
       assertNumber(o.total,   "order.total");
 
-      // orderItem shape
       if (o.products.length > 0) {
         const item = o.products[0];
         assert.ok("productID" in item, "order item is missing productID");
@@ -341,9 +301,8 @@ describe("Contract: Order", () => {
     });
   });
 
-  // ── GET /:id ──
   describe("GET /:id", () => {
-    test("nonexistent UUID id → 404 + message field", async () => {
+    test("nonexistent UUID id -> 404 + message field", async () => {
       const { status, body } = await request(
         `${ORDER}/00000000-0000-0000-0000-000000000000`
       );
@@ -352,19 +311,17 @@ describe("Contract: Order", () => {
     });
   });
 
-  // ── POST / ──
   describe("POST / (create order)", () => {
-    test("missing products → 400 + message field", async () => {
+    test("missing products -> 400 + message field", async () => {
       const { status, body } = await request(`${ORDER}/`, {
         method: "POST",
         body: JSON.stringify({ userID: "testuser", address: "123 street" }),
       });
-      // The service throws because products is empty or missing.
       assert.ok(status === 400 || status === 500, `Expected 400/500 but received ${status}`);
       assert.ok("message" in body, "missing message field in error response");
     });
 
-    test("nonexistent productID → 400 + message field", async () => {
+    test("nonexistent productID -> 400 + message field", async () => {
       const { status, body } = await request(`${ORDER}/`, {
         method: "POST",
         body: JSON.stringify({
@@ -379,9 +336,8 @@ describe("Contract: Order", () => {
     });
   });
 
-  // ── DELETE /:id ──
   describe("DELETE /:id", () => {
-    test("nonexistent id → 400 + message field", async () => {
+    test("nonexistent id -> 400 + message field", async () => {
       const { status, body } = await request(
         `${ORDER}/00000000-0000-0000-0000-000000000000`,
         { method: "DELETE" }
@@ -391,7 +347,6 @@ describe("Contract: Order", () => {
     });
   });
 
-  // ── GET /health ──
   describe("GET /health", () => {
     test("shape matches the other services", async () => {
       const { status, body } = await request(`${ORDER}/health`);
@@ -405,7 +360,6 @@ describe("Contract: Order", () => {
   });
 });
 
-// ─── GATEWAY CONTRACT ───────────────────────────────────────────────────────
 describe("Contract: Gateway", () => {
   describe("GET /api/health", () => {
     test("shape: { gateway, timestamp, dependencies[] }", async () => {
@@ -425,14 +379,14 @@ describe("Contract: Gateway", () => {
   });
 
   describe("JWT error responses", () => {
-    test("without token → 401 + message field", async () => {
+    test("without token -> 401 + message field", async () => {
       const { status, body } = await request(`${GATEWAY}/api/products`);
       assert.equal(status, 401);
       assert.ok("message" in body, "missing message field");
       assertString(body.message, "message");
     });
 
-    test("invalid token → 403 + message field", async () => {
+    test("invalid token -> 403 + message field", async () => {
       const { status, body } = await request(`${GATEWAY}/api/products`, {
         headers: { Authorization: "Bearer invalid.jwt.token" },
       });
@@ -441,12 +395,10 @@ describe("Contract: Gateway", () => {
       assertString(body.message, "message");
     });
 
-    test("nonexistent route → 404 + message field", async () => {
+    test("nonexistent route -> 404 + message field", async () => {
       const { status, body } = await request(`${GATEWAY}/api/unknown-service`, {
         headers: { Authorization: "Bearer fake.jwt.token" },
       });
-      // The gateway may verify JWT first and return 403, or verify after routing and return 404.
-      // Both are accepted.
       assert.ok([403, 404].includes(status), `Expected 403 or 404, received ${status}`);
       assert.ok("message" in body, "missing message field");
     });

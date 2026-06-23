@@ -1,4 +1,4 @@
-name: CI — frontend
+name: CI - frontend
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test:
-    name: frontend — lint / test / audit
+    name: frontend - lint / test / audit
     runs-on: ubuntu-latest
 
     steps:

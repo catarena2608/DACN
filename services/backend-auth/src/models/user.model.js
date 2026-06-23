@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require("uuid");
 const userSchema = new mongoose.Schema({
   _id: {
     type: String,
-    default: () => uuidv4(), // 👈 auto generate
+    default: () => uuidv4(),
   },
   email: { type: String, required: true, unique: true },
   name: String,
@@ -13,10 +13,8 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model("UserAuth", userSchema, "userAuth");
 
-// ================== METHODS ==================
-
 exports.createUser = async (user) => {
-  return User.create(user); // _id is generated automatically.
+  return User.create(user);
 };
 
 exports.findUserByEmail = async (email) => {
