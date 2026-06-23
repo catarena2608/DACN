@@ -127,7 +127,7 @@ spike: 100 -> 1,000 VUs, hold 2 minutes, then ramp down
 soak: 300 VUs for 30 minutes, then ramp down
 ```
 
-Thresholds are defined in `tests/load/staging-10000-users.js`:
+Thresholds are shared by the k6 scripts in `tests/load/`:
 
 ```text
 http_req_failed < 1%
@@ -143,8 +143,8 @@ BASE_URL="http://<staging-ingress-ip-or-domain>" \
 HOST_HEADER="staging.dacn.local" \
 AUTH_EMAIL="$SEED_EMAIL" \
 AUTH_PASSWORD="$SEED_PASSWORD" \
-LOAD_PROFILE=baseline \
-k6 run tests/load/staging-10000-users.js
+LOAD_TEST_PROFILE=1k \
+k6 run tests/load/load.js
 ```
 
 ## Manual Verification

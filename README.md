@@ -216,18 +216,21 @@ Detailed performance plan:
 docs/performance-evaluation.md
 ```
 
-Main script:
+Main k6 scripts:
 
 ```text
-tests/load/staging-10000-users.js
+tests/load/smoke.js
+tests/load/load.js
+tests/load/spike.js
+tests/load/soak.js
 ```
 
-Scenario:
+Load scenario:
 
 ```text
-10 minutes ramp up to 10,000 virtual users
-20 minutes hold at 10,000 virtual users
-5 minutes ramp down
+1 minute ramp up
+3 minutes hold
+1 minute ramp down
 ```
 
 Thresholds:

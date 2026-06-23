@@ -7,48 +7,6 @@ const AUTH_EMAIL = __ENV.AUTH_EMAIL;
 const AUTH_PASSWORD = __ENV.AUTH_PASSWORD;
 const PRODUCT_ID = __ENV.PRODUCT_ID || "";
 const HOST_HEADER = __ENV.HOST_HEADER || "";
-const LOAD_PROFILE = __ENV.LOAD_PROFILE || "10k";
-const SPIKE_TARGET = Number(__ENV.SPIKE_TARGET || "1000");
-const SOAK_TARGET = Number(__ENV.SOAK_TARGET || "300");
-const SOAK_DURATION = __ENV.SOAK_DURATION || "30m";
-
-const profiles = {
-  smoke: [
-    { duration: "30s", target: 10 },
-    { duration: "30s", target: 0 },
-  ],
-  baseline: [
-    { duration: "2m", target: 100 },
-    { duration: "5m", target: 100 },
-    { duration: "1m", target: 0 },
-  ],
-  "1k": [
-    { duration: "1m", target: 1000 },
-    { duration: "3m", target: 1000 },
-    { duration: "1m", target: 0 },
-  ],
-  "10k": [
-    { duration: "1m", target: 10000 },
-    { duration: "3m", target: 10000 },
-    { duration: "1m", target: 0 },
-  ],
-  spike: [
-    { duration: "30s", target: 100 },
-    { duration: "30s", target: SPIKE_TARGET },
-    { duration: "2m", target: SPIKE_TARGET },
-    { duration: "30s", target: 100 },
-    { duration: "30s", target: 0 },
-  ],
-  soak: [
-    { duration: "2m", target: SOAK_TARGET },
-    { duration: SOAK_DURATION, target: SOAK_TARGET },
-    { duration: "2m", target: 0 },
-  ],
-};
-
-if (!profiles[LOAD_PROFILE]) {
-  throw new Error(`Unsupported LOAD_PROFILE=${LOAD_PROFILE}. Use smoke, baseline, 1k, 10k, spike, or soak.`);
-}
 
 function buildHeaders(extra = {}) {
   return {
@@ -58,20 +16,22 @@ function buildHeaders(extra = {}) {
   };
 }
 
-export const options = {
-  scenarios: {
-    authenticated_read_path: {
-      executor: "ramping-vus",
-      gracefulRampDown: "30s",
-      stages: profiles[LOAD_PROFILE],
+export function createOptions(stages) {
+  return {
+    scenarios: {
+      authenticated_read_path: {
+        executor: "ramping-vus",
+        gracefulRampDown: "30s",
+        stages,
+      },
     },
-  },
-  thresholds: {
-    http_req_failed: ["rate<0.01"],
-    http_req_duration: ["p(95)<800", "p(99)<1500"],
-    checks: ["rate>0.99"],
-  },
-};
+    thresholds: {
+      http_req_failed: ["rate<0.01"],
+      http_req_duration: ["p(95)<800", "p(99)<1500"],
+      checks: ["rate>0.99"],
+    },
+  };
+}
 
 export function setup() {
   if (!AUTH_EMAIL || !AUTH_PASSWORD) {
@@ -98,7 +58,7 @@ export function setup() {
   };
 }
 
-export default function (data) {
+export function readProductPath(data) {
   const authHeaders = {
     Authorization: `Bearer ${data.accessToken}`,
   };
@@ -127,9 +87,11 @@ export default function (data) {
   sleep(0.5 + Math.random() * 1.5);
 }
 
-export function handleSummary(data) {
-  return {
-    stdout: `Staging ${LOAD_PROFILE} load test summary: ${JSON.stringify(data.metrics, null, 2)}\n`,
-    "staging-load-summary.json": JSON.stringify(data, null, 2),
+export function summaryOutput(data, profile, defaultFile) {
+  const output = {
+    stdout: `Staging ${profile} load test summary: ${JSON.stringify(data.metrics, null, 2)}\n`,
   };
+
+  output[__ENV.SUMMARY_FILE || defaultFile] = JSON.stringify(data, null, 2);
+  return output;
 }

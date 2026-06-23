@@ -132,20 +132,23 @@ Do not rely on only one 10k-user test. Run multiple tests to understand behavior
 | Soak | Long run | 300 VUs for 30 minutes by default | No memory leak/restart |
 | Scalability | Compare tuning phases | multiple configs | Prove HPA/cache/resource tuning impact |
 
-## 10,000-User Scenario
+## Load Test Scenario
 
-Main script:
+Main k6 scripts:
 
 ```text
-tests/load/staging-10000-users.js
+tests/load/smoke.js
+tests/load/load.js
+tests/load/spike.js
+tests/load/soak.js
 ```
 
-Scenario:
+Load profile:
 
 ```text
-10 minutes ramp up to 10,000 VUs
-20 minutes hold at 10,000 VUs
-5 minutes ramp down
+1 minute ramp up
+3 minutes hold
+1 minute ramp down
 ```
 
 Current traffic mix:
@@ -157,17 +160,17 @@ GET /api/products/:id for 25% of iterations if PRODUCT_ID is configured
 think time 0.5s - 2s
 ```
 
-Additional executable profiles:
+Additional executable scripts:
 
 ```text
-LOAD_PROFILE=spike
+tests/load/spike.js
   30s ramp to 100 VUs
   30s spike to SPIKE_TARGET, default 1,000 VUs
   2m hold at SPIKE_TARGET
   30s ramp down to 100 VUs
   30s ramp down to 0
 
-LOAD_PROFILE=soak
+tests/load/soak.js
   2m ramp to SOAK_TARGET, default 300 VUs
   SOAK_DURATION steady hold, default 30m
   2m ramp down to 0
