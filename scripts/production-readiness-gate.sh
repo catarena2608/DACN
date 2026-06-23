@@ -18,6 +18,8 @@ RUN_INTEGRATION="${RUN_INTEGRATION:-true}"
 RUN_K6_SMOKE="${RUN_K6_SMOKE:-false}"
 RUN_1K_LOAD="${RUN_1K_LOAD:-false}"
 RUN_10K_LOAD="${RUN_10K_LOAD:-false}"
+RUN_SPIKE_LOAD="${RUN_SPIKE_LOAD:-false}"
+RUN_SOAK_LOAD="${RUN_SOAK_LOAD:-false}"
 
 EXPECTED_IMAGE_TAG="${EXPECTED_IMAGE_TAG:-}"
 STAGING_URL="${STAGING_URL:-}"
@@ -57,6 +59,8 @@ Optional switches:
   RUN_K6_SMOKE=true|false         default false
   RUN_1K_LOAD=true|false          default false
   RUN_10K_LOAD=true|false         default false
+  RUN_SPIKE_LOAD=true|false       default false
+  RUN_SOAK_LOAD=true|false        default false
 
 Artifacts:
   ARTIFACT_DIR=$ARTIFACT_DIR
@@ -254,7 +258,7 @@ require_command curl
 require_command flux
 require_command node
 
-if [[ "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" ]]; then
+if [[ "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]]; then
   require_command k6
 fi
 
@@ -264,7 +268,7 @@ if [[ -n "$EXPECTED_IMAGE_TAG" ]] && is_placeholder_value "$EXPECTED_IMAGE_TAG";
   exit 2
 fi
 
-if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" ]]; then
+if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOKE" == "true" || "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]]; then
   if [[ -z "${SEED_EMAIL:-}" || -z "${SEED_PASSWORD:-}" ]]; then
     echo "SEED_EMAIL and SEED_PASSWORD are required for contract/integration/load validation." >&2
     echo "Use a dedicated staging test account, not a real user account." >&2
@@ -277,8 +281,8 @@ if [[ "$RUN_CONTRACT" == "true" || "$RUN_INTEGRATION" == "true" || "$RUN_K6_SMOK
   fi
 fi
 
-if [[ "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" ]] && [[ -z "$STAGING_URL" ]]; then
-  echo "STAGING_URL is required when RUN_1K_LOAD=true or RUN_10K_LOAD=true." >&2
+if [[ "$RUN_1K_LOAD" == "true" || "$RUN_10K_LOAD" == "true" || "$RUN_SPIKE_LOAD" == "true" || "$RUN_SOAK_LOAD" == "true" ]] && [[ -z "$STAGING_URL" ]]; then
+  echo "STAGING_URL is required when RUN_1K_LOAD=true, RUN_10K_LOAD=true, RUN_SPIKE_LOAD=true, or RUN_SOAK_LOAD=true." >&2
   echo "Use the production-like ingress URL, not a local port-forward." >&2
   exit 2
 fi
@@ -381,6 +385,26 @@ if [[ "$RUN_10K_LOAD" == "true" ]]; then
 
   run_shell_step "k6 10k production-like load test" \
     "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' LOAD_PROFILE=10k k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+fi
+
+if [[ "$RUN_SPIKE_LOAD" == "true" ]]; then
+  host_env=""
+  if [[ -n "$STAGING_HOST" ]]; then
+    host_env="HOST_HEADER='$STAGING_HOST'"
+  fi
+
+  run_shell_step "k6 spike load test" \
+    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SPIKE_TARGET='${SPIKE_TARGET:-1000}' LOAD_PROFILE=spike k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
+fi
+
+if [[ "$RUN_SOAK_LOAD" == "true" ]]; then
+  host_env=""
+  if [[ -n "$STAGING_HOST" ]]; then
+    host_env="HOST_HEADER='$STAGING_HOST'"
+  fi
+
+  run_shell_step "k6 soak load test" \
+    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SOAK_TARGET='${SOAK_TARGET:-300}' SOAK_DURATION='${SOAK_DURATION:-30m}' LOAD_PROFILE=soak k6 run '$REPO_ROOT/tests/load/staging-10000-users.js'"
 fi
 
 run_shell_step "app restart budget during validation" \

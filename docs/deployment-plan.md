@@ -4,7 +4,7 @@ This document describes the lab deployment plan for the project. The goal is to 
 
 ## Deployment Argument
 
-The project does not need to start with AWS/EKS. The more important goal is to prove this workflow:
+The project does not need to start with a managed cloud Kubernetes platform. The more important goal is to prove this workflow:
 
 ```text
 Developer pushes code
@@ -88,7 +88,7 @@ Payment, Ranking, and Admin should be presented as future extensions unless impl
 | Deployment package | Helm | Values per environment |
 | GitOps CD | FluxCD | Cluster reconciles from Git |
 | Registry | GHCR | Integrates with GitHub Actions |
-| Ingress | Nginx Ingress Controller | Common and easy to configure |
+| Ingress | Kubernetes Ingress | Standard entrypoint for frontend and API routing |
 
 ### Observability
 
@@ -132,7 +132,7 @@ For cheaper log storage only, Loki would be simpler.
 | --- | --- | --- |
 | kind/Minikube local | Quick demo on a strong personal machine | Easiest, but resource-limited |
 | k3s on VPS/VMs | Production-like lab within budget | Recommended for the project |
-| AWS/EKS | Cloud-native target | Powerful but heavier and easier to over-scope |
+| Managed Kubernetes | Cloud-native target | Powerful but heavier and easier to over-scope |
 
 Recommended minimum if running ELK, Prometheus, Grafana, MongoDB, Redis, RabbitMQ, and app services:
 
@@ -144,7 +144,7 @@ Recommended minimum if running ELK, Prometheus, Grafana, MongoDB, Redis, RabbitM
 
 ```text
 flux-system          # FluxCD
-ingress-nginx        # Ingress Controller
+ingress-controller   # Ingress Controller namespace, if not provided by the cluster
 observability        # Prometheus, Grafana, Elasticsearch, Kibana, Jaeger, OTel
 data                 # MongoDB, Redis, RabbitMQ if run in-cluster
 dacn-staging         # Application staging
@@ -328,4 +328,3 @@ rollback explanation
 ## Conclusion
 
 The deployment target is not just "Kubernetes runs the app." The target is a repeatable release workflow with staging validation and evidence that a specific image tag is safe enough to promote.
-

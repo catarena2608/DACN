@@ -79,7 +79,7 @@ The staging environment must be close enough to production for the results to be
 | Group | What to record |
 | --- | --- |
 | Kubernetes | Node count, CPU/RAM per node, Kubernetes version |
-| Ingress | Nginx Ingress/load balancer, TLS, domain |
+| Ingress | Kubernetes Ingress/load balancer, TLS, domain |
 | Workload | Initial replicas, HPA min/max, CPU target |
 | Database | MongoDB mode, connection string type, instance size |
 | Cache | Redis mode, memory limit, eviction policy |
@@ -128,8 +128,8 @@ Do not rely on only one 10k-user test. Run multiple tests to understand behavior
 | Baseline | Measure normal behavior | 100 VUs, 5 minutes | Low latency, little scaling |
 | Load | Validate target load | 10,000 VUs | Pass thresholds |
 | Stress | Find breaking point | beyond 10,000 VUs | Identify failure threshold |
-| Spike | Sudden load increase | 0 -> 5,000 VUs in 1 minute | System does not collapse |
-| Soak | Long run | 1,000-2,000 VUs for 1-4 hours | No memory leak/restart |
+| Spike | Sudden load increase | 100 -> 1,000 VUs in 30 seconds | System does not collapse |
+| Soak | Long run | 300 VUs for 30 minutes by default | No memory leak/restart |
 | Scalability | Compare tuning phases | multiple configs | Prove HPA/cache/resource tuning impact |
 
 ## 10,000-User Scenario
@@ -155,6 +155,22 @@ login in setup
 GET /api/products?page=1&limit=20
 GET /api/products/:id for 25% of iterations if PRODUCT_ID is configured
 think time 0.5s - 2s
+```
+
+Additional executable profiles:
+
+```text
+LOAD_PROFILE=spike
+  30s ramp to 100 VUs
+  30s spike to SPIKE_TARGET, default 1,000 VUs
+  2m hold at SPIKE_TARGET
+  30s ramp down to 100 VUs
+  30s ramp down to 0
+
+LOAD_PROFILE=soak
+  2m ramp to SOAK_TARGET, default 300 VUs
+  SOAK_DURATION steady hold, default 30m
+  2m ramp down to 0
 ```
 
 Thresholds:
@@ -308,10 +324,4 @@ For the executable production decision flow, run:
 
 ```text
 scripts/production-readiness-gate.sh
-```
-
-or from the infrastructure automation repository:
-
-```text
-make production-gate-10k
 ```

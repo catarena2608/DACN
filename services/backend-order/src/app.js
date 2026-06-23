@@ -20,7 +20,6 @@ app.use(cookieParser());
 app.use("/health", healthRoutes);
 app.use("/", orderRoutes);
 
-// ================== MONGOOSE CONNECT ==================
 const MONGO_URI = process.env.URI;
 
 async function connectDB() {
@@ -28,7 +27,6 @@ async function connectDB() {
   console.log("MongoDB connected");
 }
 
-// ================== INIT ==================
 async function init() {
   await connectDB();
   await connectRabbit();

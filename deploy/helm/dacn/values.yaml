@@ -1,7 +1,3 @@
-# Base values for the DACN microservices platform.
-# Environment-specific overrides live in values-dev.yaml, values-staging.yaml,
-# and values-prod.yaml. Do not store real secrets in this file.
-
 global:
   environment: dev
   domain: dacn.local

@@ -1,24 +1,3 @@
-/**
- * Integration Tests
- *
- * Goal: test real business flows across multiple services,
- * through the Gateway exactly as the frontend uses them.
- *
- * Tested flows:
- *   1. Auth flow: register → login → refresh → logout
- *   2. Authenticated product CRUD through the gateway
- *   3. Order flow: login → create product → place order → verify stock → delete order → restore stock
- *   4. Stock reservation rollback: order with insufficient stock
- *   5. Gateway auth guard: verify protected routes cannot be accessed without a token
- *
- * Environment variables:
- *   GATEWAY_URL   default http://localhost:3000
- *   AUTH_URL      default http://localhost:3001  (used to verify state)
- *   PRODUCT_URL   default http://localhost:3002  (bypass gateway for setup)
- *
- * Seed user: defaults to auth.json and can be overridden through SEED_EMAIL / SEED_PASSWORD.
- */
-
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -46,20 +25,17 @@ async function request(url, options = {}) {
   return { status: res.status, body, headers: res.headers, setCookie };
 }
 
-// Extract refresh token from the set-cookie header.
 function extractRefreshToken(setCookie) {
   const match = setCookie.match(/refreshToken=([^;]+)/);
   return match ? match[1] : null;
 }
 
-// ─── 1. AUTH FLOW ───────────────────────────────────────────────────────────
 describe("Integration: Auth flow", () => {
   let accessToken    = null;
   let refreshCookie  = null;
   let testEmail      = null;
 
-  // ── 1a. Register a new user ──
-  test("register new user successfully → 201", async () => {
+  test("register new user successfully -> 201", async () => {
     testEmail = `ci_test_${Date.now()}@test.com`;
     const { status, body } = await request(`${AUTH}/register`, {
       method: "POST",
@@ -72,8 +48,7 @@ describe("Integration: Auth flow", () => {
     assert.equal(status, 201, `Register failed: ${JSON.stringify(body)}`);
   });
 
-  // ── 1b. Register duplicate email ──
-  test("register existing email → 400", async () => {
+  test("register existing email -> 400", async () => {
     const { status } = await request(`${AUTH}/register`, {
       method: "POST",
       body: JSON.stringify({
@@ -85,8 +60,7 @@ describe("Integration: Auth flow", () => {
     assert.equal(status, 400);
   });
 
-  // ── 1c. Login with the newly created user ──
-  test("login with newly created user → accessToken + refreshToken cookie", async () => {
+  test("login with newly created user -> accessToken + refreshToken cookie", async () => {
     const { status, body, setCookie } = await request(`${AUTH}/login`, {
       method: "POST",
       body: JSON.stringify({ email: testEmail, password: TEST_PASSWORD }),
@@ -101,16 +75,14 @@ describe("Integration: Auth flow", () => {
     refreshCookie = setCookie;
   });
 
-  // ── 1d. Use accessToken to call authenticated API through the gateway ──
-  test("use accessToken to call GET /api/products through gateway → 200", async () => {
+  test("use accessToken to call GET /api/products through gateway -> 200", async () => {
     const { status } = await request(`${GATEWAY}/api/products`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     assert.equal(status, 200, "Authenticated request failed");
   });
 
-  // ── 1e. Refresh token rotation ──
-  test("POST /refresh with cookie → returns new accessToken + new refreshToken", async () => {
+  test("POST /refresh with cookie -> returns new accessToken + new refreshToken", async () => {
     const rawToken = extractRefreshToken(refreshCookie);
     assert.ok(rawToken, "Could not extract refreshToken from cookie");
 
@@ -122,7 +94,6 @@ describe("Integration: Auth flow", () => {
     assert.equal(status, 200, `Refresh failed: ${JSON.stringify(body)}`);
     assert.ok(body.accessToken, "missing new accessToken");
 
-    // The new token must differ from the old token.
     assert.notEqual(body.accessToken, accessToken, "accessToken must be rotated");
 
     const newCookie = setCookie;
@@ -130,20 +101,17 @@ describe("Integration: Auth flow", () => {
     assert.ok(newRawToken, "missing new refreshToken in cookie");
     assert.notEqual(newRawToken, rawToken, "refreshToken must be rotated");
 
-    // ── Old token must be revoked ──
     const { status: reuseStatus } = await request(`${AUTH}/refresh`, {
       method: "POST",
       headers: { Cookie: `refreshToken=${rawToken}` },
     });
     assert.equal(reuseStatus, 403, "Old token after rotation must be revoked (403)");
 
-    // Update for the logout step.
     accessToken   = body.accessToken;
     refreshCookie = newCookie;
   });
 
-  // ── 1f. Logout ──
-  test("POST /logout → 200, then refreshToken is no longer usable", async () => {
+  test("POST /logout -> 200, then refreshToken is no longer usable", async () => {
     const rawToken = extractRefreshToken(refreshCookie);
 
     const { status, body } = await request(`${AUTH}/logout`, {
@@ -154,7 +122,6 @@ describe("Integration: Auth flow", () => {
     assert.equal(status, 200);
     assert.ok(body.message, "missing message after logout");
 
-    // Try refreshing after logout; it must fail.
     const { status: afterLogout } = await request(`${AUTH}/refresh`, {
       method: "POST",
       headers: { Cookie: `refreshToken=${rawToken}` },
@@ -163,7 +130,6 @@ describe("Integration: Auth flow", () => {
   });
 });
 
-// ─── 2. PRODUCT CRUD THROUGH GATEWAY ───────────────────────────────────────
 describe("Integration: Product CRUD through Gateway", () => {
   let token = null;
   let pid   = null;
@@ -177,7 +143,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.ok(token, "Could not get token to run product tests");
   });
 
-  test("GET /api/products → 200 (without token it fails, so token must be valid)", async () => {
+  test("GET /api/products -> 200 (without token it fails, so token must be valid)", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -185,7 +151,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.ok(Array.isArray(body.products));
   });
 
-  test("GET /api/products?page=1&limit=3 → returns at most 3 items", async () => {
+  test("GET /api/products?page=1&limit=3 -> returns at most 3 items", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products?page=1&limit=3`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -193,7 +159,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.ok(body.products.length <= 3);
   });
 
-  test("POST /api/products → creates new product → 201", async () => {
+  test("POST /api/products -> creates new product -> 201", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -210,7 +176,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     pid = body._id;
   });
 
-  test("GET /api/products/:id → gets newly created product", async () => {
+  test("GET /api/products/:id -> gets newly created product", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -222,7 +188,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.ok("description" in body, "missing description field");
   });
 
-  test("PATCH /api/products/:id → updates price", async () => {
+  test("PATCH /api/products/:id -> updates price", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}` },
@@ -233,7 +199,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.equal(body.name, "Integration Test Product Updated");
   });
 
-  test("GET /api/products/:id after PATCH → reflects new data (cache invalidated)", async () => {
+  test("GET /api/products/:id after PATCH -> reflects new data (cache invalidated)", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -241,7 +207,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.equal(body.price, 200000, "Cache was not invalidated after update");
   });
 
-  test("DELETE /api/products/:id → deletes successfully → 200", async () => {
+  test("DELETE /api/products/:id -> deletes successfully -> 200", async () => {
     const { status, body } = await request(`${GATEWAY}/api/products/${pid}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
@@ -250,7 +216,7 @@ describe("Integration: Product CRUD through Gateway", () => {
     assert.ok(body.message);
   });
 
-  test("GET /api/products/:id after delete → 404", async () => {
+  test("GET /api/products/:id after delete -> 404", async () => {
     const { status } = await request(`${GATEWAY}/api/products/${pid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -258,7 +224,6 @@ describe("Integration: Product CRUD through Gateway", () => {
   });
 });
 
-// ─── 3. ORDER FLOW + STOCK RESERVATION ─────────────────────────────────────
 describe("Integration: Order flow + stock reservation", () => {
   let token       = null;
   let userId      = null;
@@ -268,7 +233,6 @@ describe("Integration: Order flow + stock reservation", () => {
   const ORDER_QTY = 3;
 
   before(async () => {
-    // Log in to get token and userId.
     const { body } = await request(`${AUTH}/login`, {
       method: "POST",
       body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
@@ -276,14 +240,12 @@ describe("Integration: Order flow + stock reservation", () => {
     token = body.accessToken;
     assert.ok(token, "Could not get token");
 
-    // Decode JWT to get userId. It is base64 and does not need verification here.
     const payload = JSON.parse(
       Buffer.from(token.split(".")[1], "base64url").toString("utf8")
     );
     userId = payload.userId || payload.id || payload._id;
     assert.ok(userId, "Could not get userId from JWT");
 
-    // Create a test product with fixed stock.
     const { body: p } = await request(`${PRODUCT}/`, {
       method: "POST",
       body: JSON.stringify({
@@ -298,13 +260,12 @@ describe("Integration: Order flow + stock reservation", () => {
   });
 
   after(async () => {
-    // Cleanup: delete product if it still exists.
     if (productId) {
       await request(`${PRODUCT}/${productId}`, { method: "DELETE" }).catch(() => {});
     }
   });
 
-  test("POST /api/orders → creates order successfully and deducts stock", async () => {
+  test("POST /api/orders -> creates order successfully and deducts stock", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -323,7 +284,6 @@ describe("Integration: Order flow + stock reservation", () => {
     assert.equal(body.address, "123 Integration Test Street");
     orderId = body._id;
 
-    // Verify stock was deducted.
     const { body: updatedProduct } = await request(`${PRODUCT}/${productId}`);
     assert.equal(
       updatedProduct.stock,
@@ -332,7 +292,7 @@ describe("Integration: Order flow + stock reservation", () => {
     );
   });
 
-  test("GET /api/orders/:id → gets newly created order", async () => {
+  test("GET /api/orders/:id -> gets newly created order", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders/${orderId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -342,7 +302,7 @@ describe("Integration: Order flow + stock reservation", () => {
     assert.ok(Array.isArray(body.products));
   });
 
-  test("GET /api/orders?userID=xxx → filters by userID", async () => {
+  test("GET /api/orders?userID=xxx -> filters by userID", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders?userID=${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -352,7 +312,7 @@ describe("Integration: Order flow + stock reservation", () => {
     assert.ok(found, "Order was not found in results filtered by userID");
   });
 
-  test("DELETE /api/orders/:id → deletes order and restores stock", async () => {
+  test("DELETE /api/orders/:id -> deletes order and restores stock", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders/${orderId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
@@ -361,7 +321,6 @@ describe("Integration: Order flow + stock reservation", () => {
     assert.equal(status, 200, `Delete order failed: ${JSON.stringify(body)}`);
     assert.equal(body.success, true);
 
-    // Verify stock was restored to the original value.
     const { body: restoredProduct } = await request(`${PRODUCT}/${productId}`);
     assert.equal(
       restoredProduct.stock,
@@ -373,7 +332,6 @@ describe("Integration: Order flow + stock reservation", () => {
   });
 });
 
-// ─── 4. STOCK ROLLBACK WHEN ORDER FAILS ────────────────────────────────────
 describe("Integration: Stock rollback when order fails", () => {
   let token      = null;
   let userId     = null;
@@ -391,7 +349,6 @@ describe("Integration: Stock rollback when order fails", () => {
     );
     userId = payload.userId || payload.id || payload._id;
 
-    // Create product A with enough stock.
     const { body: pA } = await request(`${PRODUCT}/`, {
       method: "POST",
       body: JSON.stringify({ name: "Rollback Product A", price: 10000, stock: STOCK_A, category: [] }),
@@ -405,7 +362,7 @@ describe("Integration: Stock rollback when order fails", () => {
     }
   });
 
-  test("order with 1 valid product + 1 nonexistent product → 400, stock A remains unchanged", async () => {
+  test("order with 1 valid product + 1 nonexistent product -> 400, stock A remains unchanged", async () => {
     const { status, body } = await request(`${GATEWAY}/api/orders`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -413,15 +370,14 @@ describe("Integration: Stock rollback when order fails", () => {
         userID: userId,
         address: "Rollback Test Street",
         products: [
-          { productID: productAId, num: 2 },             // valid
-          { productID: "nonexistent-product", num: 1 },  // nonexistent, triggers rollback
+          { productID: productAId, num: 2 },
+          { productID: "nonexistent-product", num: 1 },
         ],
       }),
     });
 
     assert.equal(status, 400, `Expected 400 but received ${status}: ${JSON.stringify(body)}`);
 
-    // Stock A must be rolled back to the original value.
     const { body: checkA } = await request(`${PRODUCT}/${productAId}`);
     assert.equal(
       checkA.stock,
@@ -430,7 +386,7 @@ describe("Integration: Stock rollback when order fails", () => {
     );
   });
 
-  test("order exceeding stock → 400, stock is not deducted", async () => {
+  test("order exceeding stock -> 400, stock is not deducted", async () => {
     const { status } = await request(`${GATEWAY}/api/orders`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
@@ -447,7 +403,6 @@ describe("Integration: Stock rollback when order fails", () => {
   });
 });
 
-// ─── 5. GATEWAY AUTH GUARD ─────────────────────────────────────────────────
 describe("Integration: Gateway auth guard", () => {
   const protectedRoutes = [
     { method: "GET",    path: "/api/products" },
@@ -457,7 +412,7 @@ describe("Integration: Gateway auth guard", () => {
   ];
 
   for (const route of protectedRoutes) {
-    test(`${route.method} ${route.path} without token → 401`, async () => {
+    test(`${route.method} ${route.path} without token -> 401`, async () => {
       const { status } = await request(`${GATEWAY}${route.path}`, {
         method: route.method,
         body: route.method !== "GET" ? JSON.stringify({}) : undefined,
@@ -467,12 +422,10 @@ describe("Integration: Gateway auth guard", () => {
   }
 
   test("Auth routes /api/auth/login and /api/auth/register are NOT blocked by JWT", async () => {
-    // These routes must bypass the JWT guard according to the gateway code.
     const { status: loginStatus } = await request(`${GATEWAY}/api/auth/login`, {
       method: "POST",
       body: JSON.stringify({ email: "test@test.com", password: "wrong" }),
     });
-    // 401 comes from the auth service for wrong password, not 403 from gateway JWT.
     assert.equal(loginStatus, 401, "Login route must bypass JWT guard and receive error from auth service");
   });
 });

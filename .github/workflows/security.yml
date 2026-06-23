@@ -5,7 +5,7 @@ on:
 
 jobs:
   gitleaks:
-    name: Gitleaks — secret scan
+    name: Gitleaks - secret scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
         continue-on-error: true
 
   npm-audit:
-    name: npm audit — full monorepo
+    name: npm audit - full monorepo
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
