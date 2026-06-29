@@ -29,6 +29,11 @@ TEST_RUN_ID="${TEST_RUN_ID:-staging-$(date -u +%Y%m%dT%H%M%SZ)}"
 TEST_START_EPOCH=""
 TEST_END_EPOCH=""
 
+GRAFANA_BASE_URL="${GRAFANA_BASE_URL:-http://grafana.dacn.local}"
+JAEGER_BASE_URL="${JAEGER_BASE_URL:-http://jaeger.dacn.local}"
+KIBANA_BASE_URL="${KIBANA_BASE_URL:-http://kibana.dacn.local}"
+SEND_SUMMARY_EMAIL="${SEND_SUMMARY_EMAIL:-false}"
+
 EXPECTED_IMAGE_TAG="${EXPECTED_IMAGE_TAG:-}"
 STAGING_URL="${STAGING_URL:-}"
 STAGING_HOST="${STAGING_HOST:-staging.dacn.local}"
@@ -147,6 +152,31 @@ run_shell_step() {
   run_step "$name" bash -lc "$command"
 }
 
+# Prerequisite gate: runs silently (not recorded in summary), aborts on failure.
+require_step() {
+  local name="$1"
+  shift
+  local log_file="$ARTIFACT_DIR/$(printf '%s' "$name" | tr ' /' '__' | tr -cd '[:alnum:]_.-').log"
+
+  echo
+  echo "==> $name"
+  if "$@" >"$log_file" 2>&1; then
+    echo "PASS $name"
+  else
+    echo "FAIL $name"
+    echo "Log: $log_file"
+    sed -n '1,120p' "$log_file" >&2 || true
+    echo "Aborting: prerequisite '$name' failed." >&2
+    exit 1
+  fi
+}
+
+require_shell_step() {
+  local name="$1"
+  local command="$2"
+  require_step "$name" bash -lc "$command"
+}
+
 wait_for_port() {
   local port="$1"
   local timeout_sec="${2:-30}"
@@ -244,7 +274,7 @@ k6_recovery_wait() {
     return 0
   fi
 
-  run_shell_step "recovery wait after $previous_profile" \
+  require_shell_step "recovery wait after $previous_profile" \
     "sleep '$LOAD_RECOVERY_WAIT'; kubectl -n '$STAGING_NAMESPACE' wait --for=condition=Available deployment --all --timeout='$KUBE_WAIT_TIMEOUT'; kubectl -n '$STAGING_NAMESPACE' get pods -o wide"
 }
 
@@ -260,32 +290,90 @@ run_k6_ingress_profile() {
     "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env TEST_RUN_ID='$TEST_RUN_ID' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SUMMARY_FILE='staging-$profile-load-summary.json' $extra_env k6 run '$REPO_ROOT/tests/load/$script_file'"
 }
 
+gate_detail() {
+  local name="$1"
+  local status="$2"
+
+  local json=""
+  case "$name" in
+    "k6 smoke profile")                 json="$ARTIFACT_DIR/staging-smoke-load-summary.json" ;;
+    "k6 1k production-like load test")  json="$ARTIFACT_DIR/staging-1k-load-summary.json" ;;
+    "k6 10k production-like load test") json="$ARTIFACT_DIR/staging-10k-load-summary.json" ;;
+    "k6 spike load test")               json="$ARTIFACT_DIR/staging-spike-load-summary.json" ;;
+    "k6 soak load test")                json="$ARTIFACT_DIR/staging-soak-load-summary.json" ;;
+  esac
+
+  if [[ -n "$json" && -f "$json" ]]; then
+    jq -r '
+      .metrics as $m |
+      def ms(v): if v != null then ((v * 10 | round) / 10 | tostring) + "ms" else "n/a" end;
+      def pct(v): if v != null then ((v * 10000 | round) / 100 | tostring) + "%" else "n/a" end;
+      "p95=" + ms($m.http_req_duration.values["p(95)"]) + " " +
+      "p99=" + ms($m.http_req_duration.values["p(99)"]) + " " +
+      "err=" + pct($m.http_req_failed.values.rate) + " " +
+      "checks=" + pct($m.checks.values.rate) + " " +
+      "VUs=" + ($m.vus_max.values.value // "n/a" | tostring)
+    ' "$json" 2>/dev/null || echo "(parse error)"
+    return
+  fi
+
+  if [[ "$status" == "FAIL" ]]; then
+    local log_file
+    log_file="$ARTIFACT_DIR/$(printf '%s' "$name" | tr ' /' '__' | tr -cd '[:alnum:]_.-').log"
+    if [[ -f "$log_file" ]]; then
+      grep -m1 -Ev '^\s*$' "$log_file" | head -c 120 || true
+    fi
+  fi
+}
+
 write_summary() {
   local summary_file="$ARTIFACT_DIR/production-readiness-summary.md"
   {
     echo "# DACN Production Readiness Gate"
     echo
-    echo "- Timestamp: $(date -Is)"
-    echo "- Staging namespace: $STAGING_NAMESPACE"
-    echo "- Data namespace: $DATA_NAMESPACE"
-    echo "- Observability namespace: $OBSERVABILITY_NAMESPACE"
-    echo "- Expected image tag: ${EXPECTED_IMAGE_TAG:-not enforced}"
-    echo "- Staging URL: ${STAGING_URL:-not provided}"
-    echo "- Staging host header: ${STAGING_HOST:-not provided}"
-    echo "- Test run ID: $TEST_RUN_ID"
-    echo "- Artifact directory: $ARTIFACT_DIR"
+    echo "- **Timestamp:** $(date -Is)"
+    echo "- **Staging namespace:** $STAGING_NAMESPACE"
+    echo "- **Data namespace:** $DATA_NAMESPACE"
+    echo "- **Observability namespace:** $OBSERVABILITY_NAMESPACE"
+    echo "- **Expected image tag:** ${EXPECTED_IMAGE_TAG:-not enforced}"
+    echo "- **Staging URL:** ${STAGING_URL:-not provided}"
+    echo "- **Staging host header:** ${STAGING_HOST:-not provided}"
+    echo "- **Test run ID:** $TEST_RUN_ID"
+    echo "- **Artifact directory:** $ARTIFACT_DIR"
     echo
     echo "## Results"
     echo
-    echo "| Status | Gate |"
-    echo "| --- | --- |"
-    local result status name
+    echo "| Status | Gate | Detail |"
+    echo "| --- | --- | --- |"
+    local result status name detail log_file
     for result in "${RESULTS[@]:-}"; do
       status="${result%%|*}"
       name="${result#*|}"
-      echo "| $status | $name |"
+      detail="$(gate_detail "$name" "$status" | tr '|' '/' | head -1)"
+      echo "| $status | $name | $detail |"
     done
     echo
+    if [[ "$FAILED_STEPS" -gt 0 ]]; then
+      echo "## Failed Gate Details"
+      echo
+      for result in "${RESULTS[@]:-}"; do
+        status="${result%%|*}"
+        name="${result#*|}"
+        if [[ "$status" == "FAIL" ]]; then
+          log_file="$ARTIFACT_DIR/$(printf '%s' "$name" | tr ' /' '__' | tr -cd '[:alnum:]_.-').log"
+          echo "### $name"
+          echo
+          if [[ -f "$log_file" ]]; then
+            echo '```'
+            head -40 "$log_file" || true
+            echo '```'
+          else
+            echo "(no log file)"
+          fi
+          echo
+        fi
+      done
+    fi
     local k6_summary
     local k6_summary_count=0
     for k6_summary in "$ARTIFACT_DIR"/staging-*-load-summary.json "$ARTIFACT_DIR"/staging-load-summary.json; do
@@ -328,6 +416,46 @@ write_summary() {
       echo "## Observability Evidence"
       echo
       sed -e '1d' -e 's/^## /### /' "$ARTIFACT_DIR/observability-evidence-summary.md"
+      echo
+    fi
+    if [[ -n "${TEST_START_EPOCH:-}" && "${TEST_START_EPOCH:-0}" -gt 0 ]]; then
+      local start_ms end_ms start_us end_us start_iso end_iso
+      start_ms=$(( TEST_START_EPOCH * 1000 ))
+      end_ms=$(( TEST_END_EPOCH * 1000 ))
+      start_us=$(( TEST_START_EPOCH * 1000000 ))
+      end_us=$(( TEST_END_EPOCH * 1000000 ))
+      start_iso="$(date -u -d "@$TEST_START_EPOCH" +%Y-%m-%dT%H:%M:%S.000Z)"
+      end_iso="$(date -u -d "@$TEST_END_EPOCH" +%Y-%m-%dT%H:%M:%S.000Z)"
+      local grafana_base jaeger_base kibana_base staging_ip enc_run_id
+      grafana_base="${GRAFANA_BASE_URL:-http://grafana.dacn.local}"
+      jaeger_base="${JAEGER_BASE_URL:-http://jaeger.dacn.local}"
+      kibana_base="${KIBANA_BASE_URL:-http://kibana.dacn.local}"
+      staging_ip="${STAGING_URL:-}"
+      staging_ip="${staging_ip#http://}"
+      staging_ip="${staging_ip#https://}"
+      staging_ip="${staging_ip%%/*}"
+      enc_run_id="$(printf '%s' "$TEST_RUN_ID" | sed 's/=/%3D/g')"
+
+      echo "## Observability UI"
+      echo
+      if [[ -n "$staging_ip" ]]; then
+        echo "> **Để mở các link bên dưới**, thêm vào \`/etc/hosts\` trên máy local:"
+        echo "> \`$staging_ip  grafana.dacn.local jaeger.dacn.local kibana.dacn.local\`"
+        echo
+      fi
+      echo "| UI | Link |"
+      echo "| --- | --- |"
+      echo "| Grafana — metrics | [Open Grafana (time-scoped to test window)](${grafana_base}/dashboards?from=${start_ms}&to=${end_ms}) |"
+      echo "| Jaeger — traces | [Search traces for \`${TEST_RUN_ID}\`](${jaeger_base}/search?service=gateway-service&tags=test_run_id%3D${enc_run_id}&start=${start_us}&end=${end_us}&limit=100) |"
+      echo "| Kibana — logs | [Filter logs for \`${TEST_RUN_ID}\`](${kibana_base}/app/discover#/?_g=(time:(from:'${start_iso}',to:'${end_iso}'))&_a=(query:(language:kuery,query:'fields.testRunId:\"${TEST_RUN_ID}\"'))) |"
+      echo
+      echo "**Credentials:**"
+      echo
+      echo "| UI | Username | Password |"
+      echo "| --- | --- | --- |"
+      echo "| Grafana | \`admin\` | \`dacn-lab-admin\` |"
+      echo "| Jaeger | — | không yêu cầu xác thực |"
+      echo "| Kibana | — | không yêu cầu xác thực |"
       echo
     fi
     echo "## Tested Images"
@@ -390,31 +518,31 @@ fi
 
 echo "Artifacts will be written to: $ARTIFACT_DIR"
 
-run_step "kubectl readyz" kubectl get --raw=/readyz
-run_step "nodes ready" kubectl wait --for=condition=Ready node --all --timeout="$KUBE_WAIT_TIMEOUT"
-run_step "capture nodes" kubectl get nodes -o wide
-run_step "capture flux helmreleases" flux get helmreleases -A
-run_shell_step "staging helmrelease ready" \
+require_step "kubectl readyz" kubectl get --raw=/readyz
+require_step "nodes ready" kubectl wait --for=condition=Ready node --all --timeout="$KUBE_WAIT_TIMEOUT"
+require_step "capture nodes" kubectl get nodes -o wide
+require_step "capture flux helmreleases" flux get helmreleases -A
+require_shell_step "staging helmrelease ready" \
   "kubectl -n '$STAGING_NAMESPACE' get helmrelease dacn -o json | jq -r '.status.conditions[]? | \"\(.type)=\(.status) \(.reason // \"\") \(.message // \"\")\"'; kubectl -n '$STAGING_NAMESPACE' get helmrelease dacn -o json | jq -e 'any(.status.conditions[]?; .type==\"Ready\" and .status==\"True\")'"
 
-run_step "staging deployments available" \
+require_step "staging deployments available" \
   kubectl -n "$STAGING_NAMESPACE" wait --for=condition=Available deployment --all --timeout="$KUBE_WAIT_TIMEOUT"
-run_step "data pods ready" \
+require_step "data pods ready" \
   kubectl -n "$DATA_NAMESPACE" wait --for=condition=Ready pod --all --timeout="$KUBE_WAIT_TIMEOUT"
-run_step "observability pods ready" \
+require_step "observability pods ready" \
   kubectl -n "$OBSERVABILITY_NAMESPACE" wait --for=condition=Ready pod --all --timeout="$KUBE_WAIT_TIMEOUT"
 
-run_step "capture staging resources" kubectl -n "$STAGING_NAMESPACE" get deploy,rs,pods,svc,ingress,hpa -o wide
-run_shell_step "capture app images" \
+require_step "capture staging resources" kubectl -n "$STAGING_NAMESPACE" get deploy,rs,pods,svc,ingress,hpa -o wide
+require_shell_step "capture app images" \
   "kubectl -n '$STAGING_NAMESPACE' get deploy -o json | jq -r '.items[] | .metadata.name as \$deploy | .spec.template.spec.containers[] | \"\(\$deploy)\t\(.name)\t\(.image)\"'"
-run_shell_step "capture app restart baseline" \
+require_shell_step "capture app restart baseline" \
   "kubectl -n '$STAGING_NAMESPACE' get pods -o json | jq '[.items[].status.containerStatuses[]?.restartCount] | add // 0' | tee '$APP_RESTART_BASELINE_FILE'"
-run_step "capture data resources" kubectl -n "$DATA_NAMESPACE" get pods,svc -o wide
-run_step "capture observability resources" kubectl -n "$OBSERVABILITY_NAMESPACE" get pods,svc -o wide
-run_step "capture recent staging events" kubectl -n "$STAGING_NAMESPACE" get events --sort-by=.lastTimestamp
+require_step "capture data resources" kubectl -n "$DATA_NAMESPACE" get pods,svc -o wide
+require_step "capture observability resources" kubectl -n "$OBSERVABILITY_NAMESPACE" get pods,svc -o wide
+require_step "capture recent staging events" kubectl -n "$STAGING_NAMESPACE" get events --sort-by=.lastTimestamp
 
 if [[ -n "$EXPECTED_IMAGE_TAG" ]]; then
-  run_shell_step "expected image tag running" \
+  require_shell_step "expected image tag running" \
     "kubectl -n '$STAGING_NAMESPACE' get deploy -o json | jq -e --arg tag '$EXPECTED_IMAGE_TAG' '[.items[].spec.template.spec.containers[].image] | length > 0 and all(contains(\$tag))'"
 fi
 
@@ -424,10 +552,10 @@ if [[ -n "$STAGING_URL" ]]; then
     host_flag="-H 'Host: $STAGING_HOST'"
   fi
 
-  run_shell_step "ingress smoke root" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/' >/dev/null"
-  run_shell_step "ingress smoke gateway health" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/api/health' >/dev/null"
-  run_shell_step "ingress smoke auth health" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/api/auth/health' >/dev/null"
-  run_shell_step "ingress smoke products health" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/api/products/health' >/dev/null"
+  require_shell_step "ingress smoke root" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/' >/dev/null"
+  require_shell_step "ingress smoke gateway health" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/api/health' >/dev/null"
+  require_shell_step "ingress smoke auth health" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/api/auth/health' >/dev/null"
+  require_shell_step "ingress smoke products health" "curl -fsS --max-time 15 $host_flag '${STAGING_URL%/}/api/products/health' >/dev/null"
 fi
 
 if [[ "$RUN_NODE_TESTS" == "true" ]]; then
@@ -436,10 +564,12 @@ if [[ "$RUN_NODE_TESTS" == "true" ]]; then
      start_port_forward product "$STAGING_NAMESPACE" svc/product "$PRODUCT_LOCAL_PORT" 3002 &&
      start_port_forward order "$STAGING_NAMESPACE" svc/order "$ORDER_LOCAL_PORT" 3003 &&
      start_port_forward frontend "$STAGING_NAMESPACE" svc/frontend "$FRONTEND_LOCAL_PORT" 80; then
-    record_result "PASS" "open app service port-forwards"
+    echo
+    echo "PASS open app service port-forwards"
   else
-    record_result "FAIL" "open app service port-forwards"
-    FAILED_STEPS=$((FAILED_STEPS + 1))
+    echo "FAIL open app service port-forwards" >&2
+    echo "Aborting: prerequisite 'open app service port-forwards' failed." >&2
+    exit 1
   fi
 
   run_shell_step "frontend service smoke" "curl -fsS --max-time 15 'http://127.0.0.1:$FRONTEND_LOCAL_PORT/' >/dev/null"
@@ -463,10 +593,12 @@ fi
 
 if [[ "$RUN_K6_SMOKE" == "true" ]]; then
   if ensure_gateway_port_forward; then
-    record_result "PASS" "open gateway port-forward for k6 smoke"
+    echo
+    echo "PASS open gateway port-forward for k6 smoke"
   else
-    record_result "FAIL" "open gateway port-forward for k6 smoke"
-    FAILED_STEPS=$((FAILED_STEPS + 1))
+    echo "FAIL open gateway port-forward for k6 smoke" >&2
+    echo "Aborting: prerequisite 'open gateway port-forward for k6 smoke' failed." >&2
+    exit 1
   fi
 
   run_shell_step "k6 smoke profile" \
@@ -533,6 +665,12 @@ run_shell_step "no app OOMKilled containers" \
   "kubectl -n '$STAGING_NAMESPACE' get pods -o json | jq -e '[.items[].status.containerStatuses[]? | select((.lastState.terminated.reason // \"\") == \"OOMKilled\" or (.state.terminated.reason // \"\") == \"OOMKilled\")] | length == 0'"
 
 write_summary
+
+if [[ "${SEND_SUMMARY_EMAIL:-false}" == "true" ]]; then
+  python3 "$REPO_ROOT/scripts/send-gate-summary-email.py" \
+    "$ARTIFACT_DIR/production-readiness-summary.md" \
+    || echo "Warning: email sending failed (non-fatal)" >&2
+fi
 
 if [ "$FAILED_STEPS" -ne 0 ]; then
   exit 1
