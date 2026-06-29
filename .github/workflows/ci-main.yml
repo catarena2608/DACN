@@ -357,7 +357,7 @@ jobs:
 
       - name: Scan image for vulnerabilities (Trivy)
         if: ${{ needs.changes.outputs[matrix.service.name] == 'true' }}
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ env.OWNER }}/${{ matrix.service.name }}:latest
           format: table
