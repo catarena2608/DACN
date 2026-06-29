@@ -7,11 +7,13 @@ const AUTH_EMAIL = __ENV.AUTH_EMAIL;
 const AUTH_PASSWORD = __ENV.AUTH_PASSWORD;
 const PRODUCT_ID = __ENV.PRODUCT_ID || "";
 const HOST_HEADER = __ENV.HOST_HEADER || "";
+const TEST_RUN_ID = __ENV.TEST_RUN_ID || "";
 
 function buildHeaders(extra = {}) {
   return {
     "Content-Type": "application/json",
     ...(HOST_HEADER ? { Host: HOST_HEADER } : {}),
+    ...(TEST_RUN_ID ? { "X-Test-Run-ID": TEST_RUN_ID } : {}),
     ...extra,
   };
 }
