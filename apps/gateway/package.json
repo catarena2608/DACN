@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "jest",
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint middleware routes --ext .js",
+    "test": "jest"
   },
   "author": "",
   "license": "ISC",
@@ -27,6 +28,13 @@
     "jsonwebtoken": "^9.0.3"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
     "jest": "^30.3.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ]
   }
 }

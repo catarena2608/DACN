@@ -4,8 +4,9 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "jest",
-    "start": "node server.js"
+    "start": "node server.js",
+    "lint": "eslint src --ext .js",
+    "test": "jest"
   },
   "author": "",
   "license": "ISC",
@@ -31,6 +32,13 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
     "jest": "^30.3.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ]
   }
 }
