@@ -2,10 +2,13 @@ import { createOptions, readProductPath, setup, summaryOutput } from "./common.j
 
 const profile = "smoke";
 
-export const options = createOptions([
-  { duration: "30s", target: 10 },
-  { duration: "30s", target: 0 },
-]);
+export const options = createOptions(
+  [
+    { duration: "30s", target: 10 },
+    { duration: "30s", target: 0 },
+  ],
+  { http_req_duration: ["p(95)<2000", "p(99)<4000"] },
+);
 
 export { setup };
 
