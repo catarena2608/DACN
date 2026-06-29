@@ -449,6 +449,14 @@ write_summary() {
       echo "| Jaeger — traces | [Search traces for \`${TEST_RUN_ID}\`](${jaeger_base}/search?service=gateway-service&tags=test_run_id%3D${enc_run_id}&start=${start_us}&end=${end_us}&limit=100) |"
       echo "| Kibana — logs | [Filter logs for \`${TEST_RUN_ID}\`](${kibana_base}/app/discover#/?_g=(time:(from:'${start_iso}',to:'${end_iso}'))&_a=(query:(language:kuery,query:'fields.testRunId:\"${TEST_RUN_ID}\"'))) |"
       echo
+      echo "**Credentials:**"
+      echo
+      echo "| UI | Username | Password |"
+      echo "| --- | --- | --- |"
+      echo "| Grafana | \`admin\` | \`dacn-lab-admin\` |"
+      echo "| Jaeger | — | không yêu cầu xác thực |"
+      echo "| Kibana | — | không yêu cầu xác thực |"
+      echo
     fi
     echo "## Tested Images"
     echo
