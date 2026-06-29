@@ -136,6 +136,53 @@ p99 latency < 1500ms
 checks pass rate > 99%
 ```
 
+## Automated Observability Evidence
+
+When at least one k6 profile runs, the gate now performs this sequence automatically:
+
+```text
+record TEST_RUN_ID and start time
+run k6 with X-Test-Run-ID on every request
+record end time
+query Prometheus for the test window
+query Elasticsearch for correlated application logs
+query Jaeger for Gateway -> Product traces
+append the evidence to the production-readiness report
+```
+
+The default is:
+
+```text
+RUN_OBSERVABILITY_EVIDENCE=auto
+```
+
+`auto` enables evidence collection whenever k6 runs. It can be disabled only for local script debugging:
+
+```bash
+RUN_OBSERVABILITY_EVIDENCE=false RUN_K6_SMOKE=true \
+  scripts/production-readiness-gate.sh
+```
+
+The evidence gate requires all three sources:
+
+```text
+Prometheus: CPU and memory series exist for dacn-staging
+Elasticsearch: at least one log contains the current TEST_RUN_ID
+Jaeger: at least one trace contains gateway-service and product-service
+```
+
+Generated files include:
+
+```text
+test-window.json
+prometheus-summary.json
+elasticsearch-summary.json
+jaeger-summary.json
+observability-evidence-summary.md
+```
+
+The detailed observability result is also embedded in `production-readiness-summary.md`.
+
 For a lower-cost benchmark, use:
 
 ```bash
