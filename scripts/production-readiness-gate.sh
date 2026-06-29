@@ -22,8 +22,12 @@ RUN_1K_LOAD="${RUN_1K_LOAD:-false}"
 RUN_10K_LOAD="${RUN_10K_LOAD:-false}"
 RUN_SPIKE_LOAD="${RUN_SPIKE_LOAD:-false}"
 RUN_SOAK_LOAD="${RUN_SOAK_LOAD:-false}"
+RUN_OBSERVABILITY_EVIDENCE="${RUN_OBSERVABILITY_EVIDENCE:-auto}"
 LOAD_TEST_PROFILE="${LOAD_TEST_PROFILE:-1k}"
 LOAD_RECOVERY_WAIT="${LOAD_RECOVERY_WAIT:-60}"
+TEST_RUN_ID="${TEST_RUN_ID:-staging-$(date -u +%Y%m%dT%H%M%SZ)}"
+TEST_START_EPOCH=""
+TEST_END_EPOCH=""
 
 EXPECTED_IMAGE_TAG="${EXPECTED_IMAGE_TAG:-}"
 STAGING_URL="${STAGING_URL:-}"
@@ -68,6 +72,8 @@ Optional switches:
   RUN_10K_LOAD=true|false         default false
   RUN_SPIKE_LOAD=true|false       default false
   RUN_SOAK_LOAD=true|false        default false
+  RUN_OBSERVABILITY_EVIDENCE=auto|true|false
+                                    auto enables collection when k6 runs
   LOAD_RECOVERY_WAIT=seconds      default 60
 
 Artifacts:
@@ -209,6 +215,19 @@ k6_requested() {
   truthy "$RUN_K6_SMOKE" || truthy "$RUN_1K_LOAD" || truthy "$RUN_10K_LOAD" || truthy "$RUN_SPIKE_LOAD" || truthy "$RUN_SOAK_LOAD"
 }
 
+if [[ "$RUN_OBSERVABILITY_EVIDENCE" == "auto" ]]; then
+  if k6_requested; then
+    RUN_OBSERVABILITY_EVIDENCE=true
+  else
+    RUN_OBSERVABILITY_EVIDENCE=false
+  fi
+fi
+
+if [[ "$RUN_OBSERVABILITY_EVIDENCE" != "true" && "$RUN_OBSERVABILITY_EVIDENCE" != "false" ]]; then
+  echo "RUN_OBSERVABILITY_EVIDENCE must be auto, true, or false." >&2
+  exit 2
+fi
+
 k6_ingress_requested() {
   truthy "$RUN_1K_LOAD" || truthy "$RUN_10K_LOAD" || truthy "$RUN_SPIKE_LOAD" || truthy "$RUN_SOAK_LOAD"
 }
@@ -238,7 +257,7 @@ run_k6_ingress_profile() {
   host_env="$(k6_host_env)"
 
   run_shell_step "$name" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SUMMARY_FILE='staging-$profile-load-summary.json' $extra_env k6 run '$REPO_ROOT/tests/load/$script_file'"
+    "cd '$ARTIFACT_DIR' && BASE_URL='${STAGING_URL%/}' $host_env TEST_RUN_ID='$TEST_RUN_ID' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' PRODUCT_ID='${PRODUCT_ID:-}' SUMMARY_FILE='staging-$profile-load-summary.json' $extra_env k6 run '$REPO_ROOT/tests/load/$script_file'"
 }
 
 write_summary() {
@@ -253,6 +272,7 @@ write_summary() {
     echo "- Expected image tag: ${EXPECTED_IMAGE_TAG:-not enforced}"
     echo "- Staging URL: ${STAGING_URL:-not provided}"
     echo "- Staging host header: ${STAGING_HOST:-not provided}"
+    echo "- Test run ID: $TEST_RUN_ID"
     echo "- Artifact directory: $ARTIFACT_DIR"
     echo
     echo "## Results"
@@ -304,6 +324,12 @@ write_summary() {
         || echo "K6 summary was unavailable."
       echo
     done
+    if [[ -f "$ARTIFACT_DIR/observability-evidence-summary.md" ]]; then
+      echo "## Observability Evidence"
+      echo
+      sed -e '1d' -e 's/^## /### /' "$ARTIFACT_DIR/observability-evidence-summary.md"
+      echo
+    fi
     echo "## Tested Images"
     echo
     echo "| Deployment | Container | Image |"
@@ -430,6 +456,11 @@ if [[ "$RUN_NODE_TESTS" == "true" ]]; then
   fi
 fi
 
+if k6_requested; then
+  TEST_START_EPOCH="$(date +%s)"
+  echo "Starting k6 test window: run_id=$TEST_RUN_ID epoch=$TEST_START_EPOCH"
+fi
+
 if [[ "$RUN_K6_SMOKE" == "true" ]]; then
   if ensure_gateway_port_forward; then
     record_result "PASS" "open gateway port-forward for k6 smoke"
@@ -439,7 +470,7 @@ if [[ "$RUN_K6_SMOKE" == "true" ]]; then
   fi
 
   run_shell_step "k6 smoke profile" \
-    "cd '$ARTIFACT_DIR' && BASE_URL='http://127.0.0.1:$GATEWAY_LOCAL_PORT' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' SUMMARY_FILE='staging-smoke-load-summary.json' k6 run '$REPO_ROOT/tests/load/smoke.js'"
+    "cd '$ARTIFACT_DIR' && BASE_URL='http://127.0.0.1:$GATEWAY_LOCAL_PORT' TEST_RUN_ID='$TEST_RUN_ID' AUTH_EMAIL='$LOAD_AUTH_EMAIL' AUTH_PASSWORD='$LOAD_AUTH_PASSWORD' SUMMARY_FILE='staging-smoke-load-summary.json' k6 run '$REPO_ROOT/tests/load/smoke.js'"
 
   if k6_ingress_requested; then
     k6_recovery_wait "k6 smoke profile"
@@ -472,6 +503,28 @@ fi
 
 if [[ "$RUN_SOAK_LOAD" == "true" ]]; then
   run_k6_ingress_profile "soak" "k6 soak load test" "soak.js" "SOAK_TARGET='${SOAK_TARGET:-300}' SOAK_DURATION='${SOAK_DURATION:-30m}'"
+fi
+
+if k6_requested; then
+  TEST_END_EPOCH="$(date +%s)"
+  echo "Finished k6 test window: run_id=$TEST_RUN_ID epoch=$TEST_END_EPOCH"
+fi
+
+if [[ "$RUN_OBSERVABILITY_EVIDENCE" == "true" ]]; then
+  if [[ -z "$TEST_START_EPOCH" || -z "$TEST_END_EPOCH" ]]; then
+    echo "Observability evidence requires at least one k6 profile." >&2
+    record_result "FAIL" "automated observability evidence"
+    FAILED_STEPS=$((FAILED_STEPS + 1))
+  else
+    run_step "automated observability evidence" env \
+      OBSERVABILITY_NAMESPACE="$OBSERVABILITY_NAMESPACE" \
+      STAGING_NAMESPACE="$STAGING_NAMESPACE" \
+      ARTIFACT_DIR="$ARTIFACT_DIR" \
+      TEST_RUN_ID="$TEST_RUN_ID" \
+      TEST_START_EPOCH="$TEST_START_EPOCH" \
+      TEST_END_EPOCH="$TEST_END_EPOCH" \
+      "$REPO_ROOT/scripts/collect-observability-evidence.sh"
+  fi
 fi
 
 run_shell_step "app restart budget during validation" \

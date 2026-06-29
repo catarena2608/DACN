@@ -6,11 +6,13 @@ const cors = require("cors");
 
 const productRoutes = require("./routes/product.routes");
 const healthRoutes = require("./routes/health.routes");
+const testRunLogger = require("./middlewares/testRunLogger");
 
 const startProductConsumer = require("./utils/product.consumer");
 
 const app = express();
 
+app.use(testRunLogger(process.env.SERVICE_NAME || "product-service"));
 app.use(cors());
 app.use(express.json());
 
