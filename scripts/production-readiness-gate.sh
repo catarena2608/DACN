@@ -30,6 +30,7 @@ TEST_START_EPOCH=""
 TEST_END_EPOCH=""
 
 GRAFANA_BASE_URL="${GRAFANA_BASE_URL:-http://grafana.dacn.local}"
+GRAFANA_NAMESPACE_DASHBOARD_UID="${GRAFANA_NAMESPACE_DASHBOARD_UID:-k8s-resources-namespace}"
 JAEGER_BASE_URL="${JAEGER_BASE_URL:-http://jaeger.dacn.local}"
 KIBANA_BASE_URL="${KIBANA_BASE_URL:-http://kibana.dacn.local}"
 SEND_SUMMARY_EMAIL="${SEND_SUMMARY_EMAIL:-false}"
@@ -426,15 +427,17 @@ write_summary() {
       end_us=$(( TEST_END_EPOCH * 1000000 ))
       start_iso="$(date -u -d "@$TEST_START_EPOCH" +%Y-%m-%dT%H:%M:%S.000Z)"
       end_iso="$(date -u -d "@$TEST_END_EPOCH" +%Y-%m-%dT%H:%M:%S.000Z)"
-      local grafana_base jaeger_base kibana_base staging_ip enc_run_id
+      local grafana_base jaeger_base kibana_base staging_ip grafana_ns_uid jaeger_tags_param
       grafana_base="${GRAFANA_BASE_URL:-http://grafana.dacn.local}"
       jaeger_base="${JAEGER_BASE_URL:-http://jaeger.dacn.local}"
       kibana_base="${KIBANA_BASE_URL:-http://kibana.dacn.local}"
+      grafana_ns_uid="${GRAFANA_NAMESPACE_DASHBOARD_UID:-k8s-resources-namespace}"
       staging_ip="${STAGING_URL:-}"
       staging_ip="${staging_ip#http://}"
       staging_ip="${staging_ip#https://}"
       staging_ip="${staging_ip%%/*}"
-      enc_run_id="$(printf '%s' "$TEST_RUN_ID" | sed 's/=/%3D/g')"
+      # Jaeger 1.55+ expects tags as URL-encoded JSON, not logfmt (key=value)
+      jaeger_tags_param="%7B%22test_run_id%22%3A%22${TEST_RUN_ID}%22%7D"
 
       echo "## Observability UI"
       echo
@@ -445,8 +448,8 @@ write_summary() {
       fi
       echo "| UI | Link |"
       echo "| --- | --- |"
-      echo "| Grafana — metrics | [Open Grafana (time-scoped to test window)](${grafana_base}/dashboards?from=${start_ms}&to=${end_ms}) |"
-      echo "| Jaeger — traces | [Search traces for \`${TEST_RUN_ID}\`](${jaeger_base}/search?service=gateway-service&tags=test_run_id%3D${enc_run_id}&start=${start_us}&end=${end_us}&limit=100) |"
+      echo "| Grafana — metrics | [Kubernetes Namespace Pods (time-scoped)](${grafana_base}/d/${grafana_ns_uid}?var-datasource=default&var-namespace=${STAGING_NAMESPACE}&from=${start_ms}&to=${end_ms}) |"
+      echo "| Jaeger — traces | [Search traces for \`${TEST_RUN_ID}\`](${jaeger_base}/search?service=gateway-service&tags=${jaeger_tags_param}&start=${start_us}&end=${end_us}&limit=100) |"
       echo "| Kibana — logs | [Filter logs for \`${TEST_RUN_ID}\`](${kibana_base}/app/discover#/?_g=(time:(from:'${start_iso}',to:'${end_iso}'))&_a=(query:(language:kuery,query:'fields.testRunId:\"${TEST_RUN_ID}\"'))) |"
       echo
       echo "**Credentials:**"
