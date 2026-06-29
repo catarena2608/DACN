@@ -463,3 +463,16 @@ jobs:
         run: |
           echo "### GitOps staging update" >> "$GITHUB_STEP_SUMMARY"
           echo "Updated staging imageTag to \`$IMAGE_TAG\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Trigger staging gate
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          IMAGE_TAG="sha-${GITHUB_SHA::7}"
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/${{ github.repository }}/dispatches" \
+            -d "{\"event_type\":\"staging-deployed\",\"client_payload\":{\"image_tag\":\"${IMAGE_TAG}\"}}"
+          echo "Staging gate triggered for ${IMAGE_TAG}."

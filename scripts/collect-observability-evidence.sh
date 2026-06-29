@@ -18,6 +18,8 @@ JAEGER_SERVICE="${JAEGER_SERVICE:-jaeger-query}"
 PROMETHEUS_LOCAL_PORT="${PROMETHEUS_LOCAL_PORT:-19090}"
 ELASTICSEARCH_LOCAL_PORT="${ELASTICSEARCH_LOCAL_PORT:-19200}"
 JAEGER_LOCAL_PORT="${JAEGER_LOCAL_PORT:-16687}"
+KIBANA_SERVICE="${KIBANA_SERVICE:-kibana}"
+KIBANA_LOCAL_PORT="${KIBANA_LOCAL_PORT:-15601}"
 
 PROMETHEUS_URL_PROVIDED=false
 ELASTICSEARCH_URL_PROVIDED=false
@@ -179,6 +181,40 @@ retry_trace_query() {
   return 1
 }
 
+ensure_kibana_data_view() {
+  local kibana_url="http://127.0.0.1:${KIBANA_LOCAL_PORT}"
+  local pf_pid=""
+
+  if ! command -v kubectl >/dev/null 2>&1; then return 0; fi
+  kubectl -n "$OBSERVABILITY_NAMESPACE" get "svc/$KIBANA_SERVICE" >/dev/null 2>&1 || return 0
+
+  kubectl -n "$OBSERVABILITY_NAMESPACE" port-forward "svc/$KIBANA_SERVICE" \
+    "${KIBANA_LOCAL_PORT}:5601" >"$ARTIFACT_DIR/port-forward-kibana.log" 2>&1 &
+  pf_pid="$!"
+
+  if ! wait_for_port "$KIBANA_LOCAL_PORT"; then
+    kill "$pf_pid" 2>/dev/null || true
+    echo "Kibana port-forward failed; skipping data view setup." >&2
+    return 0
+  fi
+
+  local existing
+  existing=$(curl -fsS "${kibana_url}/api/data_views" 2>/dev/null \
+    | jq -r '.data_view[]?.title // empty' 2>/dev/null \
+    | grep -c "dacn-otel-logs" 2>/dev/null || echo 0)
+
+  if [[ "$existing" -eq 0 ]]; then
+    curl -fsS -X POST "${kibana_url}/api/data_views/data_view" \
+      -H "kbn-xsrf: true" \
+      -H "Content-Type: application/json" \
+      -d '{"data_view":{"title":"dacn-otel-logs*","timeFieldName":"@timestamp","name":"DACN Logs"}}' \
+      >/dev/null 2>&1 || true
+    echo "Created Kibana data view: dacn-otel-logs*"
+  fi
+
+  kill "$pf_pid" 2>/dev/null || true
+}
+
 START_ISO="$(date -u -d "@$TEST_START_EPOCH" +%Y-%m-%dT%H:%M:%S.%3NZ)"
 END_ISO="$(date -u -d "@$TEST_END_EPOCH" +%Y-%m-%dT%H:%M:%S.%3NZ)"
 QUERY_START_EPOCH=$((TEST_START_EPOCH - OBSERVABILITY_WINDOW_MARGIN_SECONDS))
@@ -210,6 +246,8 @@ fi
 if [[ "$JAEGER_URL_PROVIDED" == "false" ]]; then
   start_port_forward jaeger "$JAEGER_SERVICE" "$JAEGER_LOCAL_PORT" 16686
 fi
+
+ensure_kibana_data_view
 
 if (( OBSERVABILITY_SETTLE_SECONDS > 0 )); then
   echo "Waiting ${OBSERVABILITY_SETTLE_SECONDS}s for telemetry exporters to flush..."
