@@ -7,6 +7,13 @@ on:
   pull_request:
     branches: ["main"]
 
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: "Force rebuild all services (ignore change detection)"
+        type: boolean
+        default: true
+
 concurrency:
   group: main-pipeline
   cancel-in-progress: false
@@ -39,26 +46,40 @@ jobs:
         name: Detect changed images
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
+          FORCE_ALL=false
+
+          # Manual trigger always rebuilds everything
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FORCE_ALL=true
+            echo "workflow_dispatch: forcing rebuild of all services."
           else
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-          fi
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              BASE="${{ github.event.pull_request.base.sha }}"
+              HEAD="${{ github.event.pull_request.head.sha }}"
+            else
+              BASE="${{ github.event.before }}"
+              HEAD="${{ github.sha }}"
+            fi
 
-          if [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]]; then
-            BASE="$(git rev-list --max-parents=0 "$HEAD")"
-          fi
+            if [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]]; then
+              BASE="$(git rev-list --max-parents=0 "$HEAD")"
+            fi
 
-          git diff --name-only "$BASE" "$HEAD" > changed-files.txt
-          cat changed-files.txt
+            git diff --name-only "$BASE" "$HEAD" > changed-files.txt
+            cat changed-files.txt
+
+            # CI config change → rebuild all so new pipeline settings are validated
+            if grep -Eq '^\.github/workflows/ci-main\.yml' changed-files.txt; then
+              FORCE_ALL=true
+              echo "ci-main.yml changed: forcing rebuild of all services."
+            fi
+          fi
 
           mark_changed() {
             local key="$1"
             local pattern="$2"
 
-            if grep -Eq "$pattern" changed-files.txt; then
+            if $FORCE_ALL || grep -Eq "$pattern" changed-files.txt; then
               echo "$key=true" >> "$GITHUB_OUTPUT"
               CHANGED+=("$key")
             else
