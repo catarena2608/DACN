@@ -6,6 +6,7 @@
   const cookieParser = require("cookie-parser");
   const jwt = require("jsonwebtoken");
   const rateLimiter = require("./middleware/rateLimiter");
+  const testRunLogger = require("./middleware/testRunLogger");
 
   const app = express();
   const accessLogEnabled = process.env.GATEWAY_ACCESS_LOG === "true";
@@ -17,6 +18,7 @@
     timeout: Number(process.env.GATEWAY_PROXY_SOCKET_TIMEOUT_MS || 30000),
   });
 
+  app.use(testRunLogger(process.env.SERVICE_NAME || "gateway-service"));
   app.use(cookieParser());
   app.use(
     cors({
