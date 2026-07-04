@@ -35,3 +35,7 @@ Thumbs.db
 
 # Future standalone GitOps repository. It should be initialized and pushed separately.
 /dacn-gitops/
+reports/production-gate/
+reports/production-gate/
+reports/production-gate/
+services/backend-auth/auth.json
