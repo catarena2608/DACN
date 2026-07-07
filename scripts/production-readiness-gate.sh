@@ -153,7 +153,6 @@ run_shell_step() {
   run_step "$name" bash -lc "$command"
 }
 
-# Prerequisite gate: runs silently (not recorded in summary), aborts on failure.
 require_step() {
   local name="$1"
   shift
@@ -436,7 +435,6 @@ write_summary() {
       staging_ip="${staging_ip#http://}"
       staging_ip="${staging_ip#https://}"
       staging_ip="${staging_ip%%/*}"
-      # Jaeger 1.55+ expects tags as URL-encoded JSON, not logfmt (key=value)
       jaeger_tags_param="%7B%22test_run_id%22%3A%22${TEST_RUN_ID}%22%7D"
 
       echo "## Observability UI"

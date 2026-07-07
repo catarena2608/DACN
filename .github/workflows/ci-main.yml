@@ -48,7 +48,6 @@ jobs:
         run: |
           FORCE_ALL=false
 
-          # Manual trigger always rebuilds everything
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             FORCE_ALL=true
             echo "workflow_dispatch: forcing rebuild of all services."
@@ -68,7 +67,6 @@ jobs:
             git diff --name-only "$BASE" "$HEAD" > changed-files.txt
             cat changed-files.txt
 
-            # CI config change → rebuild all so new pipeline settings are validated
             if grep -Eq '^\.github/workflows/ci-main\.yml' changed-files.txt; then
               FORCE_ALL=true
               echo "ci-main.yml changed: forcing rebuild of all services."
