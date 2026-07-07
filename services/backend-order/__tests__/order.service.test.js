@@ -143,8 +143,8 @@ describe('addOrder', () => {
 
   test('releases already-reserved stock when a product fails', async () => {
     callProduct
-      .mockResolvedValueOnce({ success: true, price: 100, name: 'A' }) // first product OK
-      .mockResolvedValueOnce({ success: false, error: 'Out of stock' }); // second fails
+      .mockResolvedValueOnce({ success: true, price: 100, name: 'A' })
+      .mockResolvedValueOnce({ success: false, error: 'Out of stock' });
 
     const payload = {
       userID: 'u1',

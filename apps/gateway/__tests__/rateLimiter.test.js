@@ -9,7 +9,6 @@ const makeRes = () => {
 };
 
 beforeEach(() => {
-  // Reset the module between tests so the in-memory buckets map starts fresh
   jest.resetModules();
 });
 
@@ -37,7 +36,6 @@ describe('rateLimiter middleware', () => {
     const res = makeRes();
     const next = jest.fn();
 
-    // Send 4 requests — the 4th should be blocked (count > max)
     limiter(req, res, next);
     limiter(req, res, next);
     limiter(req, res, next);
@@ -55,13 +53,11 @@ describe('rateLimiter middleware', () => {
 
     const next = jest.fn();
 
-    // IP A: 2 requests (within limit)
     const reqA = makeReq('10.0.0.3');
     const resA = makeRes();
     limiter(reqA, resA, next);
     limiter(reqA, resA, next);
 
-    // IP B: 1 request (within limit)
     const reqB = makeReq('10.0.0.4');
     const resB = makeRes();
     limiter(reqB, resB, next);

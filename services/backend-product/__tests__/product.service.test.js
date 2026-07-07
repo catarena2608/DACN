@@ -36,8 +36,8 @@ describe('getProducts', () => {
   test('queries DB and caches result when no cache exists', async () => {
     redis.get.mockResolvedValue(null);
     redis.set
-      .mockResolvedValueOnce('OK')  // lock acquired
-      .mockResolvedValueOnce('OK'); // cache stored
+      .mockResolvedValueOnce('OK')
+      .mockResolvedValueOnce('OK');
     redis.del.mockResolvedValue(1);
     productModel.findProducts.mockResolvedValue([{ _id: '1', name: 'Phone' }]);
     productModel.countProducts.mockResolvedValue(1);
@@ -46,12 +46,12 @@ describe('getProducts', () => {
     expect(productModel.findProducts).toHaveBeenCalled();
     expect(result.total).toBe(1);
     expect(result.products).toHaveLength(1);
-    expect(redis.del).toHaveBeenCalled(); // lock released
+    expect(redis.del).toHaveBeenCalled();
   });
 
   test('throws "Server busy" when lock cannot be acquired', async () => {
     redis.get.mockResolvedValue(null);
-    redis.set.mockResolvedValue(null); // lock not acquired (NX failed)
+    redis.set.mockResolvedValue(null);
     await expect(productService.getProducts({})).rejects.toThrow('Server busy, retry');
   });
 
@@ -65,7 +65,7 @@ describe('getProducts', () => {
     productModel.countProducts.mockResolvedValue(7);
 
     const result = await productService.getProducts({ page: 1, limit: 3 });
-    expect(result.totalPages).toBe(3); // ceil(7/3) = 3
+    expect(result.totalPages).toBe(3);
   });
 });
 
